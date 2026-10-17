@@ -1,4 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">
-<refactoring comment="Move &apos;pinmapper.pincfg&apos; to &apos;Libraries&apos;" description="Move &apos;pinmapper.pincfg&apos; to &apos;Libraries&apos;" destination="Libraries" element1="/DEC_APP_old/Libraries/pinmapper.pincfg" flags="7" id="org.eclipse.ltk.core.refactoring.move.resources" resources="1" stamp="1737133950083" updateReferences="true"/>
-</session>

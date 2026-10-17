@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">&#x0A;<refactoring comment="Delete resource &apos;DEC_APP/BSW/Io/Ain/Ain_QueuedScan.c&apos;" deleteContents="false" description="Delete resource &apos;DEC_APP/BSW/Io/Ain/Ain_QueuedScan.c&apos;" element1="/DEC_APP/BSW/Io/Ain/Ain_QueuedScan.c" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1737891414972"/>&#x0A;<refactoring comment="Delete resource &apos;DEC_APP/APP/Appl_Wrapper&apos;" deleteContents="false" description="Delete resource &apos;DEC_APP/APP/Appl_Wrapper&apos;" element1="/DEC_APP/APP/Appl_Wrapper" flags="7" id="org.eclipse.ltk.core.refactoring.delete.resources" resources="1" stamp="1737912189311"/>
-</session>

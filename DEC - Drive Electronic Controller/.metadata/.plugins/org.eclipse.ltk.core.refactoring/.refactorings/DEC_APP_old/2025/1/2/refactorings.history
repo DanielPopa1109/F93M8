@@ -1,3 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<session version="1.0">&#x0A;<refactoring comment="Rename resource &apos;DEC_APP/APP/DiagMaster/DiagMaster&apos; to &apos;DiagMaster.c&apos;" description="Rename resource &apos;DiagMaster&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="APP/DiagMaster/DiagMaster" name="DiagMaster.c" stamp="1736378738310" updateReferences="true"/>&#x0A;<refactoring comment="Rename resource &apos;DEC_APP/BSW/Com/Can/Can,h&apos; to &apos;Can.h&apos;" description="Rename resource &apos;Can,h&apos;" flags="7" id="org.eclipse.ltk.core.refactoring.rename.resource" input="BSW/Com/Can/Can,h" name="Can.h" stamp="1736378945247" updateReferences="true"/>
-</session>
