@@ -1,0 +1,9 @@
+> Current 2026-10-19 ELC-port implementation: [porting matrix](ELC_FBL_PORTING_MATRIX.md), [RAM execution and verification](RAM_UPDATER_VERIFICATION.md), [memory](MEMORY_AND_LINKER.md) and [executed results](../modernization/F93_VERIFICATION_RESULTS.md). Both FBLs have real independently executing SRAM updaters and verified default/controlled ARM ELFs. Default deployment is interlocked; full CubeIDE/APP builds and all hardware/recovery evidence remain unverified. Older staging-only/legacy statements below are historical.
+
+# Boot and application handover
+
+The APP prepares a dedicated retained mailbox containing magic 46424C31, requested session and its complement. It first durably writes configured NvM blocks, sends the final diagnostic response and waits for physical TP confirmation before reset. FBL checks reset cause and mailbox validity, consumes it, and stays available on the same routed 0x710 path. CBM preserves coding/calibration session selection; DMU remains independent.
+
+Without a stay request, FBL only jumps to an application with committed footer, correct full-image CRC, aligned valid SRAM stack and Thumb reset entry inside the recorded image. Jump disables/clears SysTick and NVIC pending/enables, sets VTOR/MSP/CONTROL and uses an assembly tail so C does not touch the replaced stack. Application startup owns runtime initialization. Each FBL startup performs its own freestanding constructor initialization.
+
+Existing binaries without a footer require coordinated package migration; vector plausibility alone is no longer accepted as image integrity. Reset-retention, boot timing, interrupt and watchdog behavior are source/link-tested only, with no bench handover proof. See [memory](MEMORY_AND_LINKER.md) and [closure](../modernization/F93_REMAINING_GAPS_CLOSURE.md).

@@ -1,5 +1,6 @@
 #include "EcuM.h"
 #include "Nvm.h"
+#include "Dcm.h"
 #include "Dem.h"
 #include "rtc.h"
 #include "gpio.h"
@@ -86,7 +87,7 @@ void EcuM_MainFunction(void)
 				}
 			}
 			else EcuM_State = 1;
-			if(2 == EcuM_State && 2 == Nvm_WriteAllPending) EcuM_State = 3;
+			if(2 == EcuM_State && 2 == Nvm_WriteAllPending && !Dcm_IsActive()) EcuM_State = 3;
 			else
 			{
 				/* Do nothing. */

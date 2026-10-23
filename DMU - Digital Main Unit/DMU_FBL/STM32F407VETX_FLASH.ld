@@ -37,7 +37,6 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 
 _Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0x200; /* required amount of stack */
@@ -45,10 +44,15 @@ _Min_Stack_Size = 0x200; /* required amount of stack */
 /* Memories definition */
 MEMORY
 {
+  UPDATER (xrw) : ORIGIN = 0x20000000, LENGTH = 60K
+  UPDSTACK (rw) : ORIGIN = 0x2000F000, LENGTH = 4K
 	CCMRAM    	(xrw)    	: ORIGIN = 0x10000000,   	LENGTH = 63K
-  	RAM    		(xrw)    	: ORIGIN = 0x20000000,   	LENGTH = 128K
-  	FLASH    	(rx)    	: ORIGIN = 0x08000000,   	LENGTH = 16K
+  RAM (xrw) : ORIGIN = 0x20010000, LENGTH = 63K
+  FLASH (rx) : ORIGIN = 0x08000000, LENGTH = 32K
 }
+
+_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
+
 
 /* Sections */
 SECTIONS
@@ -60,6 +64,13 @@ SECTIONS
     KEEP(*(.isr_vector)) /* Startup code */
     . = ALIGN(4);
   } >FLASH
+
+  .fbl_identity 0x08000200 :
+  {
+    KEEP(*(.fbl_identity))
+  } > FLASH
+  ASSERT(SIZEOF(.isr_vector) <= 512, "Resident vectors overlap image identity")
+  ASSERT(SIZEOF(.fbl_identity) == 32, "Missing resident image identity")
 
   /* The program code and other data into "FLASH" Rom type memory */
   .text :
@@ -131,6 +142,36 @@ SECTIONS
     PROVIDE_HIDDEN (__fini_array_end = .);
     . = ALIGN(4);
   } >FLASH
+
+  /* ELC-style copyable image: vectors first; all essential state in its own SRAM. */
+  .ram_blob : ALIGN(512)
+  {
+    __ram_blob_vma_start = .;
+    KEEP(*(.ram_blob_vectors))
+    *(.ram_blob_text*)
+    *(.ram_blob_data*)
+    . = ALIGN(4);
+    __ram_blob_vma_end = .;
+  } > UPDATER AT> FLASH
+  __ram_blob_load_start = LOADADDR(.ram_blob);
+  __ram_blob_load_end = LOADADDR(.ram_blob) + SIZEOF(.ram_blob);
+  .ram_blob_bss (NOLOAD) : ALIGN(8)
+  {
+    __ram_blob_bss_start = .;
+    *(.ram_blob_bss*)
+    __ram_blob_bss_end = .;
+  } > UPDATER
+  .ram_blob_stack (NOLOAD) :
+  {
+    __ram_blob_stack_bottom = .;
+    . += 4096;
+    __ram_blob_stack_top = .;
+  } > UPDSTACK
+  ASSERT((__ram_blob_vma_start & 511) == 0, "RAM VTOR alignment")
+  ASSERT(__ram_blob_vma_start == 0x20000000, "RAM vector origin")
+  ASSERT(__ram_blob_bss_end <= ORIGIN(UPDSTACK), "RAM blob/state overlaps stack")
+  ASSERT(__ram_blob_stack_top == 0x20010000, "RAM stack geometry")
+  ASSERT(__ram_blob_load_end <= ORIGIN(FLASH)+LENGTH(FLASH), "FBL image overflow")
 
   /* Used by the startup to initialize data */
   _sidata = LOADADDR(.data);

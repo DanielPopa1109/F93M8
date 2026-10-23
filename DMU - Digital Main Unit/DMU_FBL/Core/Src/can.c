@@ -40,14 +40,14 @@ void MX_CAN1_Init(void)
 	filterConfig.FilterScale = CAN_FILTERSCALE_32BIT;
 	filterConfig.FilterFIFOAssignment = CAN_FILTER_FIFO0;
 	filterConfig.FilterActivation = ENABLE;
-	filterConfig.FilterIdHigh = (0x702 << 5) & 0xFFFF;
+	filterConfig.FilterIdHigh = (0x710 << 5) & 0xFFFF;
 	filterConfig.FilterIdLow = 0x0000;
 	filterConfig.FilterMaskIdHigh = (0x7FF << 5);
-	filterConfig.FilterMaskIdLow = 0x0000;
+	filterConfig.FilterMaskIdLow = 0x0006;
 	HAL_CAN_ConfigFilter(&hcan1, &filterConfig);
 	static uint32_t notificationLocal = 0;
 	HAL_CAN_Start(&hcan1);
-	notificationLocal = CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO0_FULL;
+	notificationLocal = CAN_IT_RX_FIFO0_MSG_PENDING | CAN_IT_RX_FIFO0_FULL | CAN_IT_TX_MAILBOX_EMPTY | CAN_IT_BUSOFF;
 	HAL_CAN_ActivateNotification(&hcan1, notificationLocal);
   /* USER CODE END CAN1_Init 2 */
 

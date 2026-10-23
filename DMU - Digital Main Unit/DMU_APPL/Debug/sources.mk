@@ -43,10 +43,19 @@ CPP_DEPS :=
 
 # Every subdirectory with source files must be described here
 SUBDIRS := \
+APPL/DiagMonitor \
 APPL/DataRecorder \
 APPL/DigitalCluster \
 APPL/RevCam \
 BSW/Com/CanH \
+BSW/Com/Can \
+BSW/Com/CanIf \
+BSW/Com/CanTp \
+BSW/Com/PduR \
+BSW/Com/Com \
+BSW/Com/CanNm \
+BSW/Com/CanSM \
+BSW/Com/ComM \
 BSW/Com/I2cH \
 BSW/Diag/Dcm \
 BSW/Diag/Dem \
@@ -60,3 +69,11 @@ Core/ThreadSafe \
 Drivers/STM32F4xx_HAL_Driver \
 Middlewares/FreeRTOS \
 
+
+SUBDIRS += BSW/Mem
+
+SUBDIRS += BSW/Mem/Crc
+
+SUBDIRS += BSW/Mem/Fls
+
+SUBDIRS += BSW/Mem/MemIf

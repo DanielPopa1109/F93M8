@@ -10,6 +10,7 @@
 #include "UartH.h"
 #include "Nvm.h"
 #include "Dem.h"
+#include "Dcm.h"
 #include "usart.h"
 #include "gpio.h"
 #include "cmsis_os2.h"
@@ -70,35 +71,6 @@ static void EcuM_ProcessFaultState(void)
 	{
 		firstRun = 1;
 
-		for(uint8 i = 0; i < DEM_SIZE_OF_DTC_ARRAY; i++)
-		{
-			if(0u == i)
-			{
-				/* Do nothing. */
-			}
-			else if(1u == i)
-			{
-				Dem_DTCStoreArray[i] = 0u;
-			}
-			else if(2u == i)
-			{
-				/* Do nothing. */
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-
-			if(i % 2 == 1 && 2u < i)
-			{
-				Dem_DTCStoreArray[i] = 0u;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-
 		if(EcuM_LastResetReason)
 		{
 			Dem_SaveDtc(0x08, 1);
@@ -156,7 +128,7 @@ void EcuM_ProcessEcuState(void)
 		{
 			/* Do nothing. */
 		}
-		if(((EcuM_MainCounter - EcuM_PostrunTimer) > 2000) && (EcuM_PostrunTimer != 0)) EcuM_State = PRESLEEP;
+		if(((EcuM_MainCounter - EcuM_PostrunTimer) > 2000) && (EcuM_PostrunTimer != 0) && NvM_IsIdle() && NvM_LastWriteResult==0U && !Dcm_IsActive()) EcuM_State = PRESLEEP;
 		else
 		{
 			/* Do nothing. */
@@ -223,9 +195,9 @@ void EcuM_ProcessTimerInterrupt(void)
 					/* Do nothing. */
 				}
 				/* Networkmanagement3 Frame */
-				if(CanSpi_RxFrame_Buffer0.frame.id == 0x510)
+				if(CanSpi_RxFrame_Buffer0.frame.id == 0x3FF && CanSpi_RxFrame_Buffer0.frame.idType == 1U && CanSpi_RxFrame_Buffer0.frame.dlc >= 1U)
 				{
-					if(CanSpi_RxFrame_Buffer0.frame.data0 == 0x10)
+					if(CanSpi_RxFrame_Buffer0.frame.data0 == 0xFF)
 					{
 						EcuM_PerformReset(0);
 					}
@@ -239,7 +211,9 @@ void EcuM_ProcessTimerInterrupt(void)
 					/* Do nothing. */
 				}
 				/* Diagnostic request Frame */
-				if(CanSpi_RxFrame_Buffer0.frame.id == 0x700) EcuM_PerformReset(0);
+				if(CanSpi_RxFrame_Buffer0.frame.id == 0x710 &&
+				   CanSpi_RxFrame_Buffer0.frame.dlc >= 2U &&
+				   CanSpi_RxFrame_Buffer0.frame.data0 == 0x54U) EcuM_PerformReset(0);
 				else
 				{
 					/* Do nothing. */
@@ -287,9 +261,9 @@ void EcuM_ProcessTimerInterrupt(void)
 					/* Do nothing. */
 				}
 				/* Networkmanagement3 Frame */
-				if(CanSpi_RxFrame_Buffer1.frame.id == 0x510)
+				if(CanSpi_RxFrame_Buffer1.frame.id == 0x3FF && CanSpi_RxFrame_Buffer1.frame.idType == 1U && CanSpi_RxFrame_Buffer1.frame.dlc >= 1U)
 				{
-					if(CanSpi_RxFrame_Buffer1.frame.data0 == 0x10)
+					if(CanSpi_RxFrame_Buffer1.frame.data0 == 0xFF)
 					{
 						EcuM_PerformReset(0);
 					}
@@ -303,7 +277,9 @@ void EcuM_ProcessTimerInterrupt(void)
 					/* Do nothing. */
 				}
 				/* Diagnostic request Frame */
-				if(CanSpi_RxFrame_Buffer1.frame.id == 0x700) EcuM_PerformReset(0);
+				if(CanSpi_RxFrame_Buffer1.frame.id == 0x710 &&
+				   CanSpi_RxFrame_Buffer1.frame.dlc >= 2U &&
+				   CanSpi_RxFrame_Buffer1.frame.data0 == 0x54U) EcuM_PerformReset(0);
 				else
 				{
 					/* Do nothing. */

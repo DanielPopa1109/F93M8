@@ -1,41 +1,12 @@
-/* START OF FILE */
-/* INCLUDE START */
+#ifndef DCM_H
+#define DCM_H
 #include "Std_Types.h"
-/* INCLUDE END */
-/* TYPEDEF START */
-/* VERSION DATA TYPE */
-typedef struct
-{
-	uint8 SoftwareVersion;
-	uint8 FlashBootLoaderVersion;
-	uint8 CodingVersion;
-	uint8 CalibrationVersion;
-}SWV;
-/* DIAGNOSTIC SESSION DATA TYPE */
-typedef enum
-{
-	DEFAULT = 0U,
-	EXTENDED = 1U,
-	PROGRAMMING = 2U,
-	CODING = 3U,
-	CALIBRATION = 4U,
-	HARDRESET = 5U,
-	SOFTRESET = 6U,
-	JUMPTOAPPL = 7U
-}DiagState;
-/* Function pointer typedef */
-typedef void (*Dcm_FuncPtr)();
-/* RDBPI data type. */
-typedef struct
-{
-	Dcm_FuncPtr FuncPtr;
-}Dcm_RDBPI_Table_t;
-/* TYPEDEF STOP */
-/* VARIABLES START */
-/* Diagnostic session state. */
-extern DiagState DiagnosticSession __attribute__((section(".ncr")));
-/* VARIABLES STOP */
-/* FUNCTIONS START */
-extern void Dcm_MainFunction(void);
-/* FUNCTIONS STOP */
-/* STOP OF FILE */
+typedef enum { DEFAULT=0,EXTENDED=1,PROGRAMMING=2,CODING=3,CALIBRATION=4,HARDRESET=5,SOFTRESET=6,JUMPTOAPPL=7 } DiagState;
+extern DiagState Dcm_DiagnosticSession;
+extern uint32 Dcm_AliveCounter;
+void Dcm_Init(void);
+uint8 Dcm_IsActive(void);
+void Dcm_MainFunction(void);
+void Dcm_TpRxIndication(const uint8 *data,uint16 len);
+void Dcm_TpTxConfirmation(uint8 success);
+#endif

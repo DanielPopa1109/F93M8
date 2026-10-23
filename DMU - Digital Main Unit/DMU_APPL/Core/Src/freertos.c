@@ -16,7 +16,16 @@
 #include "CanH.h"
 #include "I2cH.h"
 #include "Dcm.h"
+#include "../../BSW/Com/Can/Can.h"
+#include "../../BSW/Com/CanIf/CanIf.h"
+#include "../../BSW/Com/CanTp/CanTp.h"
+#include "../../BSW/Com/PduR/PduR.h"
+#include "../../BSW/Com/Com/Com.h"
+#include "../../BSW/Com/CanNm/CanNm.h"
+#include "../../BSW/Com/CanSM/CanSM.h"
+#include "../../BSW/Com/ComM/ComM.h"
 #include "Dem.h"
+#include "../../APPL/DiagMonitor/DiagMonitor.h"
 #include "Nvm.h"
 #include "EcuM.h"
 #include "FsmcH.h"
@@ -155,6 +164,16 @@ void vApplicationMallocFailedHook(void)
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
+  Dem_PreInit();
+  Dcm_Init();
+  Can_Init();
+  CanIf_Init();
+  CanTp_Init();
+  PduR_Init();
+  Com_Init();
+  CanNm_Init();
+  CanSM_Init();
+  ComM_Init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -252,6 +271,10 @@ void QM_BSW_OS_TASK(void *argument)
 		{
 			EcuM_MainFunction();
 			CanH_MainFunction();
+			Com_MainFunction();
+			CanNm_MainFunction();
+			ComM_MainFunction();
+			CanSM_MainFunction();
 			Alarm5ms_QM_BSW = 0;
 		}
 		else
@@ -263,7 +286,11 @@ void QM_BSW_OS_TASK(void *argument)
 			I2cH_MainFunction();
 			DcmiH_MainFunction();
 			FsmcH_MainFunction();
-			if(1 == EcuM_State) Dem_MainFunction();
+			if(1 == EcuM_State)
+			{
+				DiagMonitor_MainFunction();
+	            /* DEM persistence/callback progression runs in the diagnostic owner. */
+			}
 			else
 			{
 				/* Do nothing. */
@@ -288,7 +315,7 @@ void NVM_HANDLING_OS_TASK(void *argument)
 	{
 		if(1 == Alarm5ms_QM_NVM)
 		{
-			Nvm_MainFunction();
+			/* NvM is serviced by the single 5 ms diagnostic owner. */
 			Alarm5ms_QM_NVM = 0;
 		}
 		else
@@ -309,11 +336,12 @@ void OS_TASK_QM_DCM(void *argument)
 	{
 		if(1 == Alarm5ms_QM_DCM)
 		{
-			if(1 == EcuM_State) Dcm_MainFunction();
-			else
-			{
-				/* Do nothing. */
-			}
+            /* Persistence must also progress during STARTUP and POSTRUN. */
+            Can_MainFunction();
+            NvM_MainFunction();
+            Dem_MainFunction();
+            CanTp_MainFunction();
+            Dcm_MainFunction();
 			Alarm5ms_QM_DCM = 0;
 		}
 		else

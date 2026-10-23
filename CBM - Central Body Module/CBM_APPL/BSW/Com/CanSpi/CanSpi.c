@@ -1,6 +1,12 @@
 /* START OF FILE */
 /* INCLUDE START */
 #include "CanSpi.h"
+#include "../CanNm/CanNm.h"
+#include "../Can/Can.h"
+#include <string.h>
+#include "../Com/Com.h"
+#include "../CanSM/CanSM.h"
+#include "../CanIf/CanIf.h"
 #include "ActCtrl.h"
 #include "InputCtrl.h"
 #include "Dcm.h"
@@ -37,7 +43,7 @@ uint32 CanSpi_Bus_ErrorArr[3] = {0};
 /* Communication status variable. */
 CANSPI_ComState_t CanSpi_Communication_Status = {0};
 /* Communication status timeout variable. */
-uint16 CanSpi_Communication_StatusTimeout = 2000;
+uint16 CanSpi_Communication_StatusTimeout = 200;
 /* CAN RX buffer 1. */
 CANSPI_uCAN_MSG CanSpi_RxFrame_Buffer0 = {0};
 /* CAN RX buffer 2. */
@@ -113,8 +119,36 @@ uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg);
 uint8 CanSpi_Receive(CANSPI_uCAN_MSG *tempCanMsg);
 /* FUNCTIONS STOP */
 /* FUNCTIONS START */
+/* Existing CBM event announcement is an application communication callback,
+ * separate from DEM event storage and status transitions. */
+void CanSpi_DtcEventFailed(uint8 eventId)
+{
+	CANSPI_uCAN_MSG message = {0};
+	message.frame.idType = 1U;
+	message.frame.id = 0x10CU;
+	message.frame.dlc = 1U;
+	message.frame.data0 = eventId;
+	(void)CanSpi_Transmit(&message);
+}
+
+static uint16 CanSpi_DiagOwner[3];
+static void CanSpi_PollTx(void) {
+ uint32 irq=__get_PRIMASK();__disable_irq();
+ uint8 b,ctrl,flags=CanSpi_MCP2515_ReadByte(0x2CU);
+ for(b=0;b<3U;++b) if(CanSpi_DiagOwner[b]) {
+  ctrl=CanSpi_MCP2515_ReadByte((uint8)(0x30U+b*0x10U));
+  if(!(ctrl&0x08U)) {
+   uint16 owner=CanSpi_DiagOwner[b];uint8 ok=(uint8)((flags&(uint8)(0x04U<<b))!=0U && !(ctrl&0x50U));
+   CanSpi_DiagOwner[b]=0U;
+   if(owner==0x710U)Can_TxConfirmation(ok);else CanIf_ApplicationTxConfirmation(owner,ok);
+   CanSpi_MCP2515_BitModify(0x2CU,(uint8)(0x04U<<b),0U);
+  }
+ }
+ if(!irq)__enable_irq();
+}
 void CanSpi_MainFunction(void)
 {
+    CanSpi_PollTx();
 	/* TX buffer. */
 	static CANSPI_uCAN_MSG CanSpi_TxFrame = {0};
 	/* Message received in buffers value. */
@@ -159,12 +193,14 @@ void CanSpi_MainFunction(void)
 			/* If RX is performed successfully. */
 			if(CanSpi_Receive(&CanSpi_RxFrame_Buffer0) != 0)
 			{
+                if(CanSpi_RxFrame_Buffer0.frame.idType!=1U || !Com_ValidateRxPdu((uint16)CanSpi_RxFrame_Buffer0.frame.id,CanSpi_RxFrame_Buffer0.frame.dlc)) CanSpi_RxFrame_Buffer0.frame.id=0;
+                Com_RxIndication((uint16)CanSpi_RxFrame_Buffer0.frame.id,&CanSpi_RxFrame_Buffer0.frame.data0,CanSpi_RxFrame_Buffer0.frame.dlc);
 				/* StatusBodyControl2 */
 				if(0x99 == CanSpi_RxFrame_Buffer0.frame.id)
 				{
-					StatusBodyControl_FanValue = CanSpi_RxFrame_Buffer0.frame.data0;
-					StatusBodyControl_Temperature = CanSpi_RxFrame_Buffer0.frame.data2;
-					WiperStock_VehicleState = CanSpi_RxFrame_Buffer0.frame.data4;
+
+
+
 					CanSpi_StatusBodyControl2_MissCnt = 0;
 				}
 				else
@@ -174,9 +210,9 @@ void CanSpi_MainFunction(void)
 				/* StatusBodyControl */
 				if(0x98 == CanSpi_RxFrame_Buffer0.frame.id)
 				{
-					StatusBodyControl_OutsideTemp = CanSpi_RxFrame_Buffer0.frame.data3;
-					StatusBodyControl_Auto = CanSpi_RxFrame_Buffer0.frame.data5;
-					StatusBodyControl_Recirc = CanSpi_RxFrame_Buffer0.frame.data0;
+
+
+
 					CanSpi_StatusBodyControl_MissCnt = 0;
 				}
 				else
@@ -186,7 +222,7 @@ void CanSpi_MainFunction(void)
 				/* VehicleState Frame */
 				if(CanSpi_RxFrame_Buffer0.frame.id == 0x097)
 				{
-					VehicleSpeed_VehicleState  = CanSpi_RxFrame_Buffer0.frame.data4;
+
 					CanSpi_VehicleState_MissCnt = 0;
 				}
 				else
@@ -194,9 +230,10 @@ void CanSpi_MainFunction(void)
 					/* Do nothing. */
 				}
 				/* Networkmanagement3 Frame */
-				if(CanSpi_RxFrame_Buffer0.frame.id == 0x510)
+				if(CanSpi_RxFrame_Buffer0.frame.id == 0x3FF && CanSpi_RxFrame_Buffer0.frame.idType == 1U && CanSpi_RxFrame_Buffer0.frame.dlc == 1U)
 				{
-					if(CanSpi_RxFrame_Buffer0.frame.data0 == 0x10)
+					CanNm_RxIndication(0x3FFU, &CanSpi_RxFrame_Buffer0.frame.data0, CanSpi_RxFrame_Buffer0.frame.dlc);
+					if(CanSpi_RxFrame_Buffer0.frame.data0 == 0xFF)
 					{
 						/* Update the status of the communication. */
 						CanSpi_Networkmanagement3_Signal = CanSpi_RxFrame_Buffer0.frame.data0;
@@ -205,7 +242,7 @@ void CanSpi_MainFunction(void)
 						{
 							/* Do nothing. */
 						}
-						CanSpi_Communication_StatusTimeout = 2000;
+						CanSpi_Communication_StatusTimeout = 200;
 					}
 					else
 					{
@@ -217,7 +254,7 @@ void CanSpi_MainFunction(void)
 					/* Do nothing. */
 				}
 				/* Diagnostic request Frame */
-				if(CanSpi_RxFrame_Buffer0.frame.id == 0x700) Dcm_DiagServiceRequest_Frame = CanSpi_RxFrame_Buffer0;
+				if(CanSpi_RxFrame_Buffer0.frame.id == 0x710 && CanSpi_RxFrame_Buffer0.frame.dlc >= 2U && CanSpi_RxFrame_Buffer0.frame.dlc <= 8U && (CanSpi_RxFrame_Buffer0.frame.data0 == 0x54U || CanSpi_RxFrame_Buffer0.frame.data0 == 0x41U)) { Can_FrameType diag = {0}; diag.id = 0x710U; diag.dlc = CanSpi_RxFrame_Buffer0.frame.dlc; memcpy(diag.data, &CanSpi_RxFrame_Buffer0.frame.data0, diag.dlc); Can_RxIndication(&diag); }
 				else
 				{
 					/* Do nothing. */
@@ -237,12 +274,14 @@ void CanSpi_MainFunction(void)
 		{
 			if(CanSpi_Receive(&CanSpi_RxFrame_Buffer1) != 0)
 			{
+                if(CanSpi_RxFrame_Buffer1.frame.idType!=1U || !Com_ValidateRxPdu((uint16)CanSpi_RxFrame_Buffer1.frame.id,CanSpi_RxFrame_Buffer1.frame.dlc)) CanSpi_RxFrame_Buffer1.frame.id=0;
+                Com_RxIndication((uint16)CanSpi_RxFrame_Buffer1.frame.id,&CanSpi_RxFrame_Buffer1.frame.data0,CanSpi_RxFrame_Buffer1.frame.dlc);
 				/* StatusBodyControl2 */
 				if(0x99 == CanSpi_RxFrame_Buffer1.frame.id)
 				{
-					StatusBodyControl_FanValue = CanSpi_RxFrame_Buffer1.frame.data0;
-					StatusBodyControl_Temperature = CanSpi_RxFrame_Buffer1.frame.data2;
-					WiperStock_VehicleState = CanSpi_RxFrame_Buffer1.frame.data4;
+
+
+
 					CanSpi_StatusBodyControl2_MissCnt = 0;
 				}
 				else
@@ -252,9 +291,9 @@ void CanSpi_MainFunction(void)
 				/* StatusBodyControl */
 				if(0x98 == CanSpi_RxFrame_Buffer1.frame.id)
 				{
-					StatusBodyControl_OutsideTemp = CanSpi_RxFrame_Buffer1.frame.data3;
-					StatusBodyControl_Auto = CanSpi_RxFrame_Buffer1.frame.data5;
-					StatusBodyControl_Recirc = CanSpi_RxFrame_Buffer1.frame.data0;
+
+
+
 					CanSpi_StatusBodyControl_MissCnt = 0;
 				}
 				else
@@ -264,7 +303,7 @@ void CanSpi_MainFunction(void)
 				/* VehicleState Frame */
 				if(CanSpi_RxFrame_Buffer1.frame.id == 0x097)
 				{
-					VehicleSpeed_VehicleState  = CanSpi_RxFrame_Buffer1.frame.data4;
+
 					CanSpi_VehicleState_MissCnt = 0;
 				}
 				else
@@ -272,9 +311,10 @@ void CanSpi_MainFunction(void)
 					/* Do nothing. */
 				}
 				/* Networkmanagement3 Frame */
-				if(CanSpi_RxFrame_Buffer1.frame.id == 0x510)
+				if(CanSpi_RxFrame_Buffer1.frame.id == 0x3FF && CanSpi_RxFrame_Buffer1.frame.idType == 1U && CanSpi_RxFrame_Buffer1.frame.dlc == 1U)
 				{
-					if(CanSpi_RxFrame_Buffer1.frame.data0 == 0x10)
+					CanNm_RxIndication(0x3FFU, &CanSpi_RxFrame_Buffer1.frame.data0, CanSpi_RxFrame_Buffer1.frame.dlc);
+					if(CanSpi_RxFrame_Buffer1.frame.data0 == 0xFF)
 					{
 						/* Update the status of the communication. */
 						CanSpi_Networkmanagement3_Signal = CanSpi_RxFrame_Buffer1.frame.data0;
@@ -283,7 +323,7 @@ void CanSpi_MainFunction(void)
 						{
 							/* Do nothing. */
 						}
-						CanSpi_Communication_StatusTimeout = 2000;
+						CanSpi_Communication_StatusTimeout = 200;
 					}
 					else
 					{
@@ -295,7 +335,7 @@ void CanSpi_MainFunction(void)
 					/* Do nothing. */
 				}
 				/* Diagnostic request Frame */
-				if(CanSpi_RxFrame_Buffer1.frame.id == 0x700) Dcm_DiagServiceRequest_Frame = CanSpi_RxFrame_Buffer1;
+				if(CanSpi_RxFrame_Buffer1.frame.id == 0x710 && CanSpi_RxFrame_Buffer1.frame.dlc >= 2U && CanSpi_RxFrame_Buffer1.frame.dlc <= 8U && (CanSpi_RxFrame_Buffer1.frame.data0 == 0x54U || CanSpi_RxFrame_Buffer1.frame.data0 == 0x41U)) { Can_FrameType diag = {0}; diag.id = 0x710U; diag.dlc = CanSpi_RxFrame_Buffer1.frame.dlc; memcpy(diag.data, &CanSpi_RxFrame_Buffer1.frame.data0, diag.dlc); Can_RxIndication(&diag); }
 				else
 				{
 					/* Do nothing. */
@@ -415,7 +455,7 @@ void CanSpi_MainFunction(void)
 		}
 		else Dem_SaveDtc(0x07, 0);
 		/* Status Drive Control */
-		if(CanSpi_MainCounter % 14 == 0)
+		if(0 /* Owned by Com configured 14-tick PDU. */)
 		{
 			CanSpi_TxFrame.frame.idType = 1;
 			CanSpi_TxFrame.frame.id = 0x100;
@@ -440,7 +480,7 @@ void CanSpi_MainFunction(void)
 			/* Do nothing. */
 		}
 		/* Status Command Actuator */
-		if(CanSpi_MainCounter % 26 == 0)
+		if(0 /* Owned by Com configured 26-tick PDU. */)
 		{
 			CanSpi_TxFrame.frame.idType = 1;
 			CanSpi_TxFrame.frame.id = 0x101;
@@ -528,11 +568,11 @@ uint8 CanSpi_Initialize(void)
 	RXF3reg.RXF3SIDL = 0x00;
 	RXF3reg.RXF3EID8 = 0x00;
 	RXF3reg.RXF3EID0 = 0x00;
-	RXF4reg.RXF4SIDH = 0xE0;
+	RXF4reg.RXF4SIDH = 0xE2;
 	RXF4reg.RXF4SIDL = 0x00;
 	RXF4reg.RXF4EID8 = 0x00;
 	RXF4reg.RXF4EID0 = 0x00;
-	RXF5reg.RXF5SIDH = 0xE0;
+	RXF5reg.RXF5SIDH = 0xE2;
 	RXF5reg.RXF5SIDL = 0x00;
 	RXF5reg.RXF5EID8 = 0x00;
 	RXF5reg.RXF5EID0 = 0x00;
@@ -556,7 +596,10 @@ uint8 CanSpi_Initialize(void)
 }
 uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg)
 {
-	__disable_irq();
+    uint32 irq=__get_PRIMASK();
+    if(!tempCanMsg || tempCanMsg->frame.dlc>8U) return 0U;
+    __disable_irq();
+    CanSpi_PollTx();
 	uint8 returnValue = 0;
 	CANSPI_id_reg_t idReg = {0};
 	CANSPI_CtrlStatus_t ctrlStatus = {0};
@@ -569,6 +612,8 @@ uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg)
 	{
 		CanSpi_ConvertCANid2Reg(tempCanMsg->frame.id, tempCanMsg->frame.idType, &idReg);
 		CanSpi_MCP2515_LoadTxSequence(CANSPI_MCP2515_LOAD_TXB0SIDH, &(idReg.tempSIDH), tempCanMsg->frame.dlc, &(tempCanMsg->frame.data0));
+		CanSpi_MCP2515_BitModify(0x2CU,0x04U,0U);
+        CanSpi_DiagOwner[0]=(uint16)tempCanMsg->frame.id;
 		CanSpi_MCP2515_RequestToSend(CANSPI_MCP2515_RTS_TX0);
 		returnValue = 1;
 	}
@@ -576,6 +621,8 @@ uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg)
 	{
 		CanSpi_ConvertCANid2Reg(tempCanMsg->frame.id, tempCanMsg->frame.idType, &idReg);
 		CanSpi_MCP2515_LoadTxSequence(CANSPI_MCP2515_LOAD_TXB1SIDH, &(idReg.tempSIDH), tempCanMsg->frame.dlc, &(tempCanMsg->frame.data0));
+		CanSpi_MCP2515_BitModify(0x2CU,0x08U,0U);
+        CanSpi_DiagOwner[1]=(uint16)tempCanMsg->frame.id;
 		CanSpi_MCP2515_RequestToSend(CANSPI_MCP2515_RTS_TX1);
 		returnValue = 1;
 	}
@@ -583,6 +630,8 @@ uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg)
 	{
 		CanSpi_ConvertCANid2Reg(tempCanMsg->frame.id, tempCanMsg->frame.idType, &idReg);
 		CanSpi_MCP2515_LoadTxSequence(CANSPI_MCP2515_LOAD_TXB2SIDH, &(idReg.tempSIDH), tempCanMsg->frame.dlc, &(tempCanMsg->frame.data0));
+		CanSpi_MCP2515_BitModify(0x2CU,0x10U,0U);
+        CanSpi_DiagOwner[2]=(uint16)tempCanMsg->frame.id;
 		CanSpi_MCP2515_RequestToSend(CANSPI_MCP2515_RTS_TX2);
 		returnValue = 1;
 	}
@@ -590,7 +639,7 @@ uint8 CanSpi_Transmit(CANSPI_uCAN_MSG *tempCanMsg)
 	{
 		/* Do nothing. */
 	}
-	__enable_irq();
+	if(irq==0U) __enable_irq();
 	return (returnValue);
 }
 uint8 CanSpi_Receive(CANSPI_uCAN_MSG *tempCanMsg)
@@ -666,7 +715,7 @@ static uint8 CanSpi_IsBussOff(void)
 	CANSPI_CtrlErrorStatus_t errorStatus = {0};
 	uint8 returnValue = 0;
 	errorStatus.CtrlErrorStatus = CanSpi_MCP2515_ReadByte(CANSPI_MCP2515_EFLG);
-	if(errorStatus.TXBO == 1) returnValue = 1;
+	if(errorStatus.TXBO == 1) { returnValue = 1; Can_BusOff(); }
 	else
 	{
 		/* Do nothing. */

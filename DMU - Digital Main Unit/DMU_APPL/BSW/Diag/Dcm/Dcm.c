@@ -1,633 +1,152 @@
 #include "Dcm.h"
-#include "CanH.h"
-#include "can.h"
+#include "Dcm_App.h"
+#include "Dcm_Cfg.h"
 #include "Dem.h"
+#include "../../Mem/NvM_Engine.h"
+#include "../../Com/PduR/PduR.h"
+#include "../../Com/CanTp/CanTp.h"
 #include <string.h>
-
-#define DCM_CAN_ID_TX 0x702
-#define DCM_CAN_ID_RX 0x703
-#define DCM_DATA_SIZE (DEM_NUMBER_OF_DTCS * sizeof(Dem_DTC_t))
-#define DCM_MAX_CAN_DATA_LEN 8
-typedef struct
-{
-	uint8 SoftwareVersion;
-	uint8 FlashBootLoaderVersion;
-	uint8 padding1;
-	uint8 padding2;
-}SWV;
-/* DIAGNOSTIC SESSION DATA TYPE */
-typedef enum
-{
-	DEFAULT = 0U,
-	EXTENDED = 1U,
-	PROGRAMMING = 2U,
-	HARDRESET = 5U,
-	SOFTRESET = 6U,
-	JUMPTOAPPL = 7U
-}DiagState;
-typedef void (*Dcm_FuncPtr)();
-SWV Dcm_SWVersion =
-{
-		34, /* SW */
-		30, /* FBL */
-		0xFF,
-		0xFF
-};
-__attribute__((section(".ncr"))) DiagState Dcm_DiagnosticSession = 0x00;
-__attribute__((section(".ncr"))) uint32 Dcm_AliveCounter = 0x00;
-__attribute__((section(".ccmram"))) uint32 Dcm_MainCounter = 0x00;
-__attribute__((section(".ccmram"))) CAN_TxHeaderTypeDef Dcm_TxHeader = {0, 0, 0, 0, 0, 0};
-__attribute__((section(".ccmram"))) uint8 Dcm_TxData[8] = {0};
-__attribute__((section(".ccmram"))) uint32 Dcm_TxMailbox = 0;
-extern CAN_HandleTypeDef hcan1;
-extern __attribute__((section(".ccmram"))) uint32 DataRecorder_KilometerPerDcy;
-extern __attribute__((section(".ccmram"))) uint32 DataRecorder_KilometerTotal;
-extern __attribute__((section(".ccmram"))) uint32 Dem_DTCArray[DEM_NUMBER_OF_DTCS];
-extern __attribute__((section(".ccmram"))) uint8 CanH_DiagArray[8];
-extern __attribute__((section(".ccmram"))) uint8 CanH_RequestBusSleep;
-extern __attribute__((section(".ccmram"))) uint8 CanH_NoCommCounter;
-extern __attribute__((section(".ccmram"))) CanH_ComStat_t CanH_CommunicationState;
-extern __attribute__((section(".ccmram"))) uint8 Dem_DTCSettingDeactivated;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_IsSelfTestRequested;
-extern __attribute__((section(".ccmram"))) uint8 RevCam_RxSig_ReverseCameraRequest;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_RxSig_ReverseCameraRequest;
-extern __attribute__((section(".ccmram"))) CAN_RxHeaderTypeDef CanH_DiagRxHeader;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_DcmiStatus;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_I2cStatus;
-extern __attribute__((section(".ccmram"))) uint8 RevCam_InitStatus;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_FsmcDmaErrorFlag;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_LcdInit;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_ShutOffDisplayFlag;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_ReadDisplaySelfDiagnosticsResult;
-
-void Dcm_MainFunction(void);
-void DiagRequest_DSC_DefaultSession(void);
-void DiagRequest_DSC_ExtendedSession(void);
-void DiagRequest_DSC_ProgrammingSession(void);
-void DiagRequest_DSC_CodingSession(void);
-void DiagRequest_ER_HardReset(void);
-void DiagRequest_ER_SoftReset(void);
-void DiagRequest_TP_TesterPresent(void);
-void DiagRequest_CDTCI_ClearDiagnosticInformation(void);
-void DiagRequest_RDTCI_ReadDTCInformationSupportedDtc(void);
-void DiagRequest_RDBI_ReadSWData(void);
-void DiagRequest_RDBI_ReadActiveDiagnosticSession(void);
-void DiagRequest_RDBI_ReadAliveTime(void);
-void DiagRequest_RDBPI_ReadCameraStatus(void);
-void DiagRequest_RDBPI_ReadDisplayStatus(void);
-void DiagRequest_CC_CommunicationControl(void);
-void DiagRequest_CDTCS_ControlDTCSetting(void);
-void DiagRequest_RC_DisplaySelfTest(void);
-void DiagRequest_RC_CameraDisplay(void);
-void DiagRequest_RC_WriteKM(void);
-void DiagRequest_RC_ReadKM(void);
-extern void EcuM_PerformReset(uint8 param);
-extern void Dem_ClearDtc(void);
-extern void Nvm_WriteAll(void);
-typedef void (*Dcm_FuncPtr)();
-typedef struct
-{
-	Dcm_FuncPtr FuncPtr;
-}Dcm_RDBPI_Table_t;
-Dcm_RDBPI_Table_t Dcm_RDBPI_Table[] =
-{
-		{DiagRequest_RDBPI_ReadCameraStatus},
-		{DiagRequest_RDBPI_ReadDisplayStatus},
-};
-void Dcm_MainFunction(void)
-{
-	Dcm_AliveCounter += 5;
-	if(Dcm_MainCounter == 0) Dcm_DiagnosticSession = DEFAULT;
-	else
-	{
-		/* Do nothing. */
-	}
-	if(0x3E == CanH_DiagArray[1]) DiagRequest_TP_TesterPresent();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(0x28 == CanH_DiagArray[1]) DiagRequest_CC_CommunicationControl();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(0x85 == CanH_DiagArray[1]) DiagRequest_CDTCS_ControlDTCSetting();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(CanH_DiagArray[1] == 0x10)
-	{
-		/* DEFAULT */
-		if(CanH_DiagArray[2] == 0x01) DiagRequest_DSC_DefaultSession();
-		else
-		{
-			/* Do nothing. */
-		}
-		/* EXTENDED */
-		if(CanH_DiagArray[2] == 0x03) DiagRequest_DSC_ExtendedSession();
-		else
-		{
-			/* Do nothing. */
-		}
-		/* PROGRAMMING */
-		if(CanH_DiagArray[2] == 0x02 && Dcm_DiagnosticSession == EXTENDED) DiagRequest_DSC_ProgrammingSession();
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	if(CanH_DiagArray[3] == 0x86 && CanH_DiagArray[2] == 0xF1 && CanH_DiagArray[1] == 0x22) DiagRequest_RDBI_ReadActiveDiagnosticSession();
-	else
-	{
-		/* Do nothing. */
-	}
-	/* Execute hard reset. */
-	if(CanH_DiagArray[1] == 0x11 && CanH_DiagArray[2] == 0x01) DiagRequest_ER_HardReset();
-	else
-	{
-		/* Do nothing. */
-	}
-	/* Execute soft reset. */
-	if(CanH_DiagArray[1] == 0x11 && CanH_DiagArray[2] == 0x03) DiagRequest_ER_SoftReset();
-	else
-	{
-		/* Do nothing. */
-	}
-	/* Execute clear DTC. */
-	if(CanH_DiagArray[1] == 0x14) DiagRequest_CDTCI_ClearDiagnosticInformation();
-	else
-	{
-		/* Do nothing. */
-	}
-	/* Execute read DTC. */
-	if(CanH_DiagArray[1] == 0x19) DiagRequest_RDTCI_ReadDTCInformationSupportedDtc();
-	else
-	{
-		/* Do nothing. */
-	}
-	/* Extended session routines. */
-	if(Dcm_DiagnosticSession == EXTENDED)
-	{
-		if(CanH_DiagArray[1] == 0x31)
-		{
-			if(CanH_DiagArray[4] == 0x30) DiagRequest_RC_ReadKM();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(CanH_DiagArray[4] == 0x31) DiagRequest_RC_WriteKM();
-			else
-			{
-				/* Do nothing. */
-			}
-
-			if(CanH_DiagArray[2] == 0x01)
-			{
-				if(CanH_DiagArray[3] == 0x3E && CanH_DiagArray[4] == 0x3E) DiagRequest_RC_DisplaySelfTest();
-				else
-				{
-					/* Do nothing. */
-				}
-				if(CanH_DiagArray[3] == 0x3F && CanH_DiagArray[4] == 0x3F) DiagRequest_RC_CameraDisplay();
-				else
-				{
-					/* Do nothing. */
-				}
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		/* Read data routines. */
-		if(CanH_DiagArray[1] == 0x2A)
-		{
-			if(CanH_DiagArray[2] == 0x04)
-			{
-				Dcm_RDBPI_Table[CanH_DiagArray[3] - 12].FuncPtr();
-			}
-			else if(CanH_DiagArray[2] != 0x04)
-			{
-				Dcm_RDBPI_Table[CanH_DiagArray[3] - 12].FuncPtr();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		if(CanH_DiagArray[1] == 0x22)
-		{
-			if(CanH_DiagArray[2] == 0x00)
-			{
-				if(CanH_DiagArray[3] == 0x05) DiagRequest_RDBI_ReadAliveTime();
-				else
-				{
-					/* Do nothing. */
-				}
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(CanH_DiagArray[2] == 0xF1 && CanH_DiagArray[3] == 0x80) DiagRequest_RDBI_ReadSWData();
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	Dcm_TxHeader.DLC = 0;
-	Dcm_TxHeader.ExtId = 0;
-	Dcm_TxHeader.IDE = 0;
-	Dcm_TxHeader.RTR = 0;
-	Dcm_TxHeader.StdId = 0;
-	CanH_DiagRxHeader.DLC = 0;
-	CanH_DiagRxHeader.ExtId = 0;
-	CanH_DiagRxHeader.FilterMatchIndex = 0;
-	CanH_DiagRxHeader.IDE = 0;
-	CanH_DiagRxHeader.RTR = 0;
-	CanH_DiagRxHeader.StdId = 0;
-	CanH_DiagRxHeader.Timestamp = 0;
-	for(uint8 i = 0; i < 8; i++)
-	{
-		Dcm_TxData[i] = 0;
-		CanH_DiagArray[i] = 0;
-	}
-	Dcm_MainCounter++;
+#define CAPACITY 256U
+DiagState Dcm_DiagnosticSession __attribute__((section(".ncr")));
+uint32 Dcm_AliveCounter __attribute__((section(".ncr")));
+static uint8 request[CAPACITY],response[CAPACITY];
+static uint16 requestLength,responseLength,s3,pendingTimer;
+static uint8 requestReady,responseReady,inFlight,operation,operationSid,operationSub,pendingCount;
+static uint8 responsePending,resetAfterTx;
+uint16 Dcm_DroppedRequests;
+void Dcm_Init(void) {
+ requestReady=responseReady=inFlight=operation=pendingCount=resetAfterTx=0;
+ requestLength=responseLength=s3=0; Dcm_DiagnosticSession=DEFAULT;
+ Dcm_DroppedRequests=0;
+}
+void Dcm_TpRxIndication(const uint8 *p,uint16 n) {
+ if(!p||!n||n>CAPACITY||requestReady||operation||responseReady||inFlight) {
+  if(Dcm_DroppedRequests!=65535U) ++Dcm_DroppedRequests; return;
+ }
+ memcpy(request,p,n); requestLength=n; requestReady=1U; s3=0;
+}
+static uint16 negative(uint8 sid,uint8 nrc) { response[0]=0x7F; response[1]=sid; response[2]=nrc; return 3; }
+static uint16 dtcs(const uint8 *p,uint16 n) {
+ uint16 pos=3,count,size; uint8 status,mask=0; Dem_DTCType dtc;
+ if(n<2) return negative(0x19,0x13);
+ if(p[1]==1 || p[1]==2) { if(n!=3) return negative(0x19,0x13); mask=p[2]; }
+ else if(p[1]==4) {
+  /* No wire-level snapshot DID assignment exists in either ECU configuration. */
+  return negative(0x19,n==6?0x31:0x13);
+ }
+ else if(p[1]==6) {
+  if(n!=6) return negative(0x19,0x13);
+  dtc=((uint32)p[2]<<16)|((uint32)p[3]<<8)|p[4];size=CAPACITY-7;
+  if(Dem_SelectDTC(0,dtc,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY)!=E_OK ||
+     Dem_GetStatusOfDTC(0,&status)!=E_OK ||
+     Dem_GetExtendedDataRecordByDTC(dtc,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY,p[5],response+7,&size)!=E_OK)return negative(0x19,0x31);
+  response[0]=0x59;response[1]=6;memcpy(response+2,p+2,3);response[5]=status;response[6]=p[5];return (uint16)(size+7);
+ }
+ else if(p[1]!=0x0A || n!=2) return negative(0x19,0x12);
+ if(Dem_SetDTCFilter(0,mask,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY,FALSE,0,FALSE)!=E_OK ||
+    Dem_GetDTCStatusAvailabilityMask(0,&status,DEM_DTC_ORIGIN_PRIMARY_MEMORY)!=E_OK) return negative(0x19,0x22);
+ response[0]=0x59; response[1]=p[1]; response[2]=status;
+ if(p[1]==1) {
+  if(Dem_GetNumberOfFilteredDTC(0,&count)!=E_OK) return negative(0x19,0x22);
+  response[3]=1; response[4]=(uint8)(count>>8); response[5]=(uint8)count; return 6;
+ }
+ while(Dem_GetNextFilteredDTC(0,&dtc,&status)==E_OK) {
+  if(pos+4>CAPACITY) return negative(0x19,0x14);
+  response[pos++]=(uint8)(dtc>>16); response[pos++]=(uint8)(dtc>>8);
+  response[pos++]=(uint8)dtc; response[pos++]=status;
+ }
+ return pos;
+}
+static uint16 process(const uint8 *p,uint16 n) {
+ uint16 i,pos=1,size; uint8 sub;
+ const Dcm_ServiceConfig *cfg=0;
+ for(i=0;i<DCM_SERVICE_COUNT;++i) if(Dcm_Services[i].sid==p[0]) { cfg=&Dcm_Services[i]; break; }
+ if(!cfg) return negative(p[0],0x11);
+ if(n<cfg->minimum || n>cfg->maximum) return negative(p[0],0x13);
+ if(!(cfg->sessions&(1U<<Dcm_DiagnosticSession))) return negative(p[0],0x7F);
+ switch(p[0]) {
+ case 0x3E:
+  if(p[1]!=0 && p[1]!=0x80) return negative(p[0],0x12);
+  if(p[1]==0x80) return 0;
+  response[0]=0x7E; response[1]=0; return 2;
+ case 0x10:
+  sub=p[1];
+  if(sub==1) Dcm_DiagnosticSession=DEFAULT;
+  else if(sub==3) Dcm_DiagnosticSession=EXTENDED;
+  else if((sub==2 || (0 && (sub==4||sub==5))) && Dcm_DiagnosticSession==EXTENDED) {
+   if(!NvM_IsIdle()) return negative(p[0],0x21);
+   NvM_WriteAll(); operation=2; operationSid=p[0]; operationSub=sub; pendingTimer=DCM_P2_TICKS; return 0;
+  } else return negative(p[0],0x7E);
+  response[0]=0x50; response[1]=sub; response[2]=0; response[3]=50; response[4]=1; response[5]=244; return 6;
+ case 0x22:
+  if(((n-1)&1U)!=0) return negative(p[0],0x13);
+  response[0]=0x62;
+  for(i=1;i<n;i+=2) {
+   uint8 value[64]; uint16 did=(uint16)((uint16)p[i]<<8|p[i+1]);
+   if(did==0xF186) { value[0]=Dcm_DiagnosticSession==DEFAULT?1:(Dcm_DiagnosticSession==EXTENDED?3:2); size=1; }
+   else size=Dcm_AppReadDid(did,value);
+   if(!size) return negative(p[0],0x31);
+   if(pos+2+size>CAPACITY) return negative(p[0],0x14);
+   response[pos++]=p[i]; response[pos++]=p[i+1]; memcpy(response+pos,value,size); pos=(uint16)(pos+size);
+  } return pos;
+ case 0x19: return dtcs(p,n);
+ case 0x14:
+  if(!NvM_IsIdle()) return negative(p[0],0x21);
+  if(Dem_SelectDTC(0,((uint32)p[1]<<16)|((uint32)p[2]<<8)|p[3],DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY)!=E_OK ||
+   Dem_GetDTCSelectionResultForClearDTC(0)!=E_OK) return negative(p[0],0x31);
+  {Std_ReturnType result=Dem_ClearDTC(0);if(result!=DEM_PENDING && result!=E_OK)return negative(p[0],0x22);}
+  operation=1; operationSid=p[0]; pendingTimer=DCM_P2_TICKS; return 0;
+ case 0x11:
+  if(p[1]!=1 && p[1]!=3) return negative(p[0],0x12);
+  if(!NvM_IsIdle()) return negative(p[0],0x21);
+  NvM_WriteAll(); operation=2; operationSid=p[0]; operationSub=p[1]; pendingTimer=DCM_P2_TICKS; return 0;
+ case 0x28:
+  if(p[1]>1 || (p[2]!=1 && p[2]!=3)) return negative(p[0],0x31);
+  Dcm_AppCommunication(p[1]); response[0]=0x68; response[1]=p[1]; return 2;
+ case 0x85:
+  if(p[1]!=1 && p[1]!=2) return negative(p[0],0x12);
+  if((p[1]==1?Dem_EnableDTCSetting(0):Dem_DisableDTCSetting(0))!=E_OK) return negative(p[0],0x22);
+  response[0]=0xC5; response[1]=p[1]; return 2;
+ case 0x31: size=Dcm_AppRoutine(p,n,response); return size?size:negative(p[0],0x31);
+ case 0x2A: size=Dcm_AppPeriodic(p,n,response); return size?size:negative(p[0],0x31);
+ default: return negative(p[0],0x11);
+ }
+}
+void Dcm_TpTxConfirmation(uint8 success) {
+ if(!inFlight) return;
+ inFlight=0U;
+ if(!success) { operation=resetAfterTx=0U; return; }
+ if(resetAfterTx && !responsePending) { uint8 session=resetAfterTx; resetAfterTx=0; Dcm_AppReset(session); }
+}
+void Dcm_MainFunction(void) {
+ uint8 finished=0,failed=0;
+ Dcm_AliveCounter+=5;
+ if(!operation && !inFlight && !responseReady && ++s3>=DCM_S3_TICKS) { s3=DCM_S3_TICKS; Dcm_DiagnosticSession=DEFAULT; }
+ if(operation && !responseReady && !inFlight) {
+  if(operation==1) {
+   Dem_ClearDTCStatusType status=Dem_GetClearDTCStatus();
+   finished=status==DEM_CLEAR_OK || status==DEM_CLEAR_RESULT_FAILED; failed=status==DEM_CLEAR_RESULT_FAILED;
+  } else { finished=NvM_IsIdle(); failed=NvM_LastWriteResult!=0; }
+  if(finished) {
+   if(failed) responseLength=negative(operationSid,0x72);
+   else if(operation==1) { Dcm_AppClearSources(); response[0]=0x54; responseLength=1; }
+   else {
+    response[0]=(uint8)(operationSid+0x40); response[1]=operationSub; responseLength=2;
+    resetAfterTx=operationSid==0x10?operationSub:(operationSub==1?5:6);
+    if(operationSid==0x10) { Dcm_DiagnosticSession=operationSub==2?PROGRAMMING:(operationSub==4?CODING:CALIBRATION); response[2]=0; response[3]=50; response[4]=1; response[5]=244; responseLength=6; }
+   }
+   operation=0; pendingCount=0; responsePending=0; responseReady=1;
+  } else if(pendingTimer && --pendingTimer==0) {
+   if(++pendingCount>20) { responseLength=negative(operationSid,0x72); operation=0; }
+   else responseLength=negative(operationSid,0x78);
+   responsePending=1; responseReady=1; pendingTimer=DCM_P2STAR_TICKS;
+  }
+ }
+ if(requestReady && !responseReady && !inFlight && !operation) {
+  requestReady=0; responsePending=0; responseLength=process(request,requestLength);
+  if(responseLength) responseReady=1;
+ }
+ if(responseReady && !CanTp_IsBusy() && PduR_DcmTransmit(response,responseLength)==CAN_OK) { responseReady=0; inFlight=1; }
 }
 
-void DiagRequest_RC_WriteKM(void)
-{
-	Dcm_TxHeader.DLC = 7;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x00;
-	Dcm_TxData[3] = 0x00;
-	Dcm_TxData[4] = 0x31;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-
-	DataRecorder_KilometerTotal = (CanH_DiagArray[7] << 16) | (CanH_DiagArray[6] << 8) | (CanH_DiagArray[5]);
-
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-
-void DiagRequest_RC_ReadKM(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x00;
-	Dcm_TxData[3] = 0x00;
-	Dcm_TxData[4] = 0x30;
-	Dcm_TxData[5] = (uint8)(DataRecorder_KilometerTotal >> 24);
-	Dcm_TxData[6] = (uint8)(DataRecorder_KilometerTotal >> 16);
-	Dcm_TxData[7] = (uint8)(DataRecorder_KilometerTotal >> 8);
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x00;
-	Dcm_TxData[3] = 0x00;
-	Dcm_TxData[4] = 0x30;
-	Dcm_TxData[5] = (uint8)(DataRecorder_KilometerTotal);
-	Dcm_TxData[6] = (uint8)(DataRecorder_KilometerPerDcy >> 24);
-	Dcm_TxData[7] = (uint8)(DataRecorder_KilometerPerDcy >> 16);
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x00;
-	Dcm_TxData[3] = 0x00;
-	Dcm_TxData[4] = 0x30;
-	Dcm_TxData[5] = (uint8)(DataRecorder_KilometerPerDcy >> 8);
-	Dcm_TxData[6] = (uint8)(DataRecorder_KilometerPerDcy);
-	Dcm_TxData[7] = 0;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-
-void DiagRequest_RDBPI_ReadCameraStatus(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = CanH_DiagArray[3];
-	Dcm_TxData[4] = RevCam_DcmiStatus;
-	Dcm_TxData[5] = RevCam_I2cStatus;
-	Dcm_TxData[6] = RevCam_InitStatus;
-	Dcm_TxData[7] = RevCam_RxSig_ReverseCameraRequest;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RDBPI_ReadDisplayStatus(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = CanH_DiagArray[3];
-	Dcm_TxData[4] = DigitalCluster_FsmcDmaErrorFlag;
-	Dcm_TxData[5] = DigitalCluster_IsSelfTestRequested;
-	Dcm_TxData[6] = DigitalCluster_LcdInit;
-	Dcm_TxData[7] = DigitalCluster_ShutOffDisplayFlag;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_DSC_DefaultSession(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = CanH_DiagRxHeader.DLC - 1;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dcm_DiagnosticSession = DEFAULT;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_DSC_ExtendedSession(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = CanH_DiagRxHeader.DLC - 1;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dcm_DiagnosticSession = EXTENDED;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_DSC_ProgrammingSession(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = CanH_DiagRxHeader.DLC - 1;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dcm_DiagnosticSession = PROGRAMMING;
-	Nvm_WriteAll();
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	EcuM_PerformReset(0);
-}
-void DiagRequest_ER_HardReset(void)
-{
-	Dcm_TxHeader.DLC = 3;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 2;
-	Dcm_TxData[1] = 0x51;
-	Dcm_TxData[2] = 0x01;
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dcm_DiagnosticSession = HARDRESET;
-	Nvm_WriteAll();
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	EcuM_PerformReset(0);
-}
-void DiagRequest_ER_SoftReset(void)
-{
-	Dcm_TxHeader.DLC = 3;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 2;
-	Dcm_TxData[1] = 0x51;
-	Dcm_TxData[2] = 3;
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dcm_DiagnosticSession = SOFTRESET;
-	Nvm_WriteAll();
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	EcuM_PerformReset(0);
-}
-void DiagRequest_TP_TesterPresent(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = CanH_DiagRxHeader.DLC - 1;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	CanH_RequestBusSleep = 0;
-	if(CanH_CommunicationState != CC_ACTIVE) CanH_CommunicationState = FULL_COMMUNICATION;
-	else
-	{
-		/* Do nothing. */
-	}
-	CanH_NoCommCounter = 0;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_CDTCI_ClearDiagnosticInformation(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = CanH_DiagRxHeader.DLC - 1;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = 0;
-	Dcm_TxData[3] = 0;
-	Dcm_TxData[4] = 0;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	Dem_ClearDtc();
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RDTCI_ReadDTCInformationSupportedDtc(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x59;
-	Dcm_TxData[2] = 0x0A;
-	Dcm_TxData[3] = Dem_DTCArray[0];
-	Dcm_TxData[4] = Dem_DTCArray[1];
-	Dcm_TxData[5] = Dem_DTCArray[2];
-	Dcm_TxData[6] = Dem_DTCArray[3];
-	Dcm_TxData[7] = Dem_DTCArray[4];
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x59;
-	Dcm_TxData[2] = 0x0A;
-	Dcm_TxData[3] = Dem_DTCArray[5];
-	Dcm_TxData[4] = Dem_DTCArray[6];
-	Dcm_TxData[5] = Dem_DTCArray[7];
-	Dcm_TxData[6] = Dem_DTCArray[8];
-	Dcm_TxData[7] = Dem_DTCArray[9];
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = 0x59;
-	Dcm_TxData[2] = 0x0A;
-	Dcm_TxData[3] = Dem_DTCArray[10];
-	Dcm_TxData[4] = Dem_DTCArray[11];
-	Dcm_TxData[5] = Dem_DTCArray[12];
-	Dcm_TxData[6] = Dem_DTCArray[13];
-	Dcm_TxData[7] = Dem_DTCArray[14];
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-	HAL_Delay(5);
-	Dcm_TxHeader.DLC = 6;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 5;
-	Dcm_TxData[1] = 0x59;
-	Dcm_TxData[2] = 0x0A;
-	Dcm_TxData[3] = Dem_DTCArray[15];
-	Dcm_TxData[4] = Dem_DTCArray[16];
-	Dcm_TxData[5] = Dem_DTCArray[17];
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RDBI_ReadSWData(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = CanH_DiagArray[3];
-	Dcm_TxData[4] = Dcm_SWVersion.FlashBootLoaderVersion;
-	Dcm_TxData[5] = Dcm_SWVersion.SoftwareVersion;
-	Dcm_TxData[6] = Dcm_SWVersion.padding1;
-	Dcm_TxData[7] = Dcm_SWVersion.padding2;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RDBI_ReadActiveDiagnosticSession(void)
-{
-	Dcm_TxHeader.DLC = 5;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = 4;
-	Dcm_TxData[1] = 0x62;
-	Dcm_TxData[2] = 0xf1;
-	Dcm_TxData[3] = 0x86;
-	Dcm_TxData[4] = Dcm_DiagnosticSession;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RDBI_ReadAliveTime(void)
-{
-	Dcm_TxHeader.DLC = 8;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = 7;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	Dcm_TxData[3] = CanH_DiagArray[3];
-	Dcm_TxData[4] = (uint8)(Dcm_AliveCounter >> 24);
-	Dcm_TxData[5] = (uint8)(Dcm_AliveCounter >> 16);
-	Dcm_TxData[6] = (uint8)(Dcm_AliveCounter >> 8);
-	Dcm_TxData[7] = (uint8)(Dcm_AliveCounter);
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_CC_CommunicationControl(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = 0x02;
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	if(CanH_DiagArray[2] == 1) CanH_CommunicationState = FULL_COMMUNICATION;
-	else if(CanH_DiagArray[2] == 0) CanH_CommunicationState = CC_ACTIVE;
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_CDTCS_ControlDTCSetting(void)
-{
-	Dcm_TxHeader.DLC = CanH_DiagRxHeader.DLC;
-	Dcm_TxHeader.StdId = CanH_DiagRxHeader.StdId + 1;
-	Dcm_TxData[0] = CanH_DiagArray[0];
-	Dcm_TxData[1] = CanH_DiagArray[1] + 0x40;
-	Dcm_TxData[2] = CanH_DiagArray[2];
-	if(CanH_DiagArray[2] == 1) Dem_DTCSettingDeactivated = 1;
-	else if(CanH_DiagArray[2] == 2) Dem_DTCSettingDeactivated = 0;
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RC_DisplaySelfTest(void)
-{
-	Dcm_TxHeader.DLC = 5;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 4;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x01;
-	Dcm_TxData[3] = 0x3E;
-	Dcm_TxData[4] =	0x3E;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	DigitalCluster_IsSelfTestRequested = 1;
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
-void DiagRequest_RC_CameraDisplay(void)
-{
-	Dcm_TxHeader.DLC = 5;
-	Dcm_TxHeader.StdId = 0x703;
-	Dcm_TxData[0] = 4;
-	Dcm_TxData[1] = 0x71;
-	Dcm_TxData[2] = 0x01;
-	Dcm_TxData[3] = 0x3F;
-	Dcm_TxData[4] =	0x3F;
-	Dcm_TxData[5] = 0;
-	Dcm_TxData[6] = 0;
-	Dcm_TxData[7] = 0;
-	RevCam_RxSig_ReverseCameraRequest = CanH_DiagArray[5];
-	DigitalCluster_RxSig_ReverseCameraRequest = CanH_DiagArray[5];
-	HAL_CAN_AddTxMessage(&hcan1, &Dcm_TxHeader, Dcm_TxData, &Dcm_TxMailbox);
-}
+uint8 Dcm_IsActive(void) { return operation || inFlight || responseReady || requestReady || Dcm_DiagnosticSession!=DEFAULT; }

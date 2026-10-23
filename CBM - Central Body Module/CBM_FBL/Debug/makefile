@@ -12,6 +12,14 @@ RM := rm -rf
 -include Drivers/STM32F4xx_HAL_Driver/subdir.mk
 -include Core/Startup/subdir.mk
 -include Core/Src/subdir.mk
+-include BSW/Crc/subdir.mk
+-include BSW/Mem/subdir.mk
+-include BSW/Com/Can/subdir.mk
+-include BSW/Com/CanIf/subdir.mk
+-include BSW/Com/CanTp/subdir.mk
+-include BSW/Com/PduR/subdir.mk
+-include BSW/Mem/Fls/subdir.mk
+-include BSW/Mem/MemIf/subdir.mk
 -include objects.mk
 
 ifneq ($(MAKECMDGOALS),clean)
@@ -63,8 +71,8 @@ all: main-build
 main-build: CBM_FBL.elf secondary-outputs
 
 # Tool invocations
-CBM_FBL.elf CBM_FBL.map: $(OBJS) $(USER_OBJS) C:\Users\Daniel\Desktop\FG9326M8GTEI4\CBM\ -\ Central\ Body\ Module\CBM_FBL\STM32F411RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
-	arm-none-eabi-gcc -o "CBM_FBL.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"C:\Users\Daniel\Desktop\FG9326M8GTEI4\CBM - Central Body Module\CBM_FBL\STM32F411RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="CBM_FBL.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
+CBM_FBL.elf CBM_FBL.map: $(OBJS) $(USER_OBJS) ../STM32F411RETX_FLASH.ld makefile objects.list $(OPTIONAL_TOOL_DEPS)
+	arm-none-eabi-gcc -o "CBM_FBL.elf" @"objects.list" $(USER_OBJS) $(LIBS) -mcpu=cortex-m4 -T"../STM32F411RETX_FLASH.ld" --specs=nosys.specs -Wl,-Map="CBM_FBL.map" -Wl,--gc-sections -static --specs=nano.specs -mfpu=fpv4-sp-d16 -mfloat-abi=hard -mthumb -Wl,--start-group -lc -lm -Wl,--end-group
 	@echo 'Finished building target: $@'
 	@echo ' '
 

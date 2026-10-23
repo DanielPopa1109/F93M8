@@ -47,3 +47,13 @@ Core/Src \
 Core/Startup \
 Drivers/STM32F4xx_HAL_Driver \
 
+
+SUBDIRS += BSW/Crc
+
+SUBDIRS += BSW/Com/Can
+
+SUBDIRS += BSW/Com/CanIf
+
+SUBDIRS += BSW/Com/CanTp
+
+SUBDIRS += BSW/Com/PduR

@@ -1,0 +1,11 @@
+# Resident FBL updater - independent SRAM execution
+
+CBM and DMU now each own a complete ELC-style resident/APP/SRAM-updater separation. See [the full porting matrix](ELC_FBL_PORTING_MATRIX.md) and [SRAM implementation, protocol and verification](RAM_UPDATER_VERIFICATION.md). Earlier staging-only descriptions are superseded.
+
+`FblUpdater_Prepare` validates preconditions, linker image location/size, vector alignment, MSP, Thumb entry and all IRQ/fault vectors, then copies and compares the image. `FblUpdater_Activate` contains a real Cortex-M handover with SysTick/NVIC cleanup, VTOR, barriers, CONTROL and MSP relocation. Both default and enabled builds link. Default `FBL_UPDATER_ACTIVATION_ALLOWED=0` retains the deployment interlock; `python tools/build_fbl_validation.py --activation` compiles the functional path for software verification without accessing hardware.
+
+After a physically confirmed resident NRC78, SRAM owns independent CAN, ISO-TP, UDS, buffers, state, timer, vectors, faults, stack and F4 Flash drivers. It receives the replacement, verifies complete CRC and the ECU/MCU/layout descriptor plus vectors, erases only resident sectors 0/1, programs the body then vectors, compares Flash and verifies full CRC. NRC78 repeats during long waits/programming. ECUReset requires a successful commit and physical response completion. The resident APP-flashing path remains separate. The old staging API is retained for engineering callers; it is not the executing updater or the source of the new download transaction.
+
+Native tests stream a full 32 KiB image and the actual linked FBL binaries, including failure cases; ARM ELF relocation/disassembly/stack checks pass. These do not prove electrical timing or board execution. Both FBLs use 32 KiB; DMU's former 16 KiB was insufficient. Exported raw images include the updater LMA and fixed identity, and FCD must send CRC in TransferExit.
+
+Interrupted resident erase/program can leave the ECU without a bootable FBL. SRAM state is lost at reset; there is no automatic recovery or persistent resume. SWD/system-ROM access has not been independently demonstrated on either board. Default deployment remains interlocked until that physical recovery gate is satisfied. No hardware was flashed or reset.

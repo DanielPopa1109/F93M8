@@ -78,7 +78,21 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Com/CanSpi}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/APPL/InputCtrl}&quot;"/>
 									<listOptionValue builtIn="false" value="../Core/ThreadSafe"/>
-								</option>
+								<listOptionValue builtIn="false" value="../BSW/Com/Can"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanIf"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanTp"/>
+<listOptionValue builtIn="false" value="../BSW/Com/PduR"/>
+<listOptionValue builtIn="false" value="../BSW/Mem"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Crc"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Fls"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/MemIf"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dcm"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dem"/>
+<listOptionValue builtIn="false" value="../BSW/Com/Com"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanNm"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanSM"/>
+<listOptionValue builtIn="false" value="../BSW/Com/ComM"/>
+</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.968742173" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.2012426992" name="MCU G++ Compiler" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler">
@@ -115,6 +129,14 @@
 						<entry excluding="SysMgr|EcuM" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Sys"/>
 						<entry excluding="TimH|Ain|Dio" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Io"/>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanSpi"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/Can"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanIf"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanTp"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/PduR"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/Com"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanNm"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanSM"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/ComM"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
 						<entry excluding="Dem|Dcm" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Diag"/>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Io/TimH"/>
@@ -183,7 +205,33 @@
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Device/ST/STM32F4xx/Include"/>
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Include"/>
 									<listOptionValue builtIn="false" value="../Core/ThreadSafe"/>
-								</option>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Com/UartH}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Com/Xcp}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/APPL/ActCtrl}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Diag/Dcm}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Diag/Dem}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Io/Ain}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Io/TimH}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Mem}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Sys/EcuM}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/BSW/Com/CanSpi}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/CBM_APPL/APPL/InputCtrl}&quot;"/>
+								<listOptionValue builtIn="false" value="../BSW/Com/Can"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanIf"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanTp"/>
+<listOptionValue builtIn="false" value="../BSW/Com/PduR"/>
+<listOptionValue builtIn="false" value="../BSW/Mem"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Crc"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Fls"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/MemIf"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dcm"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dem"/>
+<listOptionValue builtIn="false" value="../BSW/Com/Com"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanNm"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanSM"/>
+<listOptionValue builtIn="false" value="../BSW/Com/ComM"/>
+</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.899626711" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.722074329" name="MCU G++ Compiler" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler">
@@ -209,8 +257,29 @@
 						</toolChain>
 					</folderInfo>
 					<sourceEntries>
-						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Diag/Dcm"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/UartH"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="APPL/ActCtrl"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Diag/Dem"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Io/Ain"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="APPL/InputCtrl"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Sys/EcuM"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Middlewares"/>
+						<entry excluding="SysMgr|EcuM" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Sys"/>
+						<entry excluding="TimH|Ain|Dio" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Io"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanSpi"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/Can"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanIf"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanTp"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/PduR"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/Com"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanNm"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/CanSM"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Com/ComM"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Core"/>
+						<entry excluding="Dem|Dcm" flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Diag"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Io/TimH"/>
+						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Mem"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Drivers"/>
 					</sourceEntries>
 				</configuration>

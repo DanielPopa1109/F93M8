@@ -11,6 +11,14 @@
 /* USER CODE BEGIN Includes */
 #include "ActCtrl.h"
 #include "CanSpi.h"
+#include "../../BSW/Com/Can/Can.h"
+#include "../../BSW/Com/CanIf/CanIf.h"
+#include "../../BSW/Com/CanTp/CanTp.h"
+#include "../../BSW/Com/PduR/PduR.h"
+#include "../../BSW/Com/Com/Com.h"
+#include "../../BSW/Com/CanNm/CanNm.h"
+#include "../../BSW/Com/CanSM/CanSM.h"
+#include "../../BSW/Com/ComM/ComM.h"
 #include "TimH.h"
 #include "Ain.h"
 #include "Nvm.h"
@@ -149,6 +157,16 @@ void vApplicationMallocFailedHook(void)
   */
 void MX_FREERTOS_Init(void) {
   /* USER CODE BEGIN Init */
+  Dem_PreInit();
+  Dcm_Init();
+  Can_Init();
+  CanIf_Init();
+  CanTp_Init();
+  PduR_Init();
+  Com_Init();
+  CanNm_Init();
+  CanSM_Init();
+  ComM_Init();
   /* USER CODE END Init */
 
   /* USER CODE BEGIN RTOS_MUTEX */
@@ -172,6 +190,7 @@ void MX_FREERTOS_Init(void) {
 	osTimerStart(Alarm10msHandle, 10);
 	osTimerStart(Alarm100msHandle, 100);
 	NvM_MainFunction();
+    for(uint8 initStep=0;initStep<8U && !NvM_IsIdle();++initStep) NvM_MainFunction();
   /* USER CODE END RTOS_TIMERS */
 
   /* USER CODE BEGIN RTOS_QUEUES */
@@ -231,6 +250,11 @@ void QM_BSW(void *argument)
 		if(Alarm5ms_QM_BSW == 1)
 		{
 			EcuM_MainFunction();
+			Com_MainFunction();
+			CanNm_MainFunction();
+			ComM_MainFunction();
+			CanSM_MainFunction();
+            /* DEM persistence/callback progression runs in the diagnostic owner. */
 			Ain_MainFunction();
 			TimH_MainFunction();
 			UartH_MainFunction();
@@ -255,7 +279,7 @@ void QM_NVM(void *argument)
 	{
 		if(Alarm100ms_QM_NVM == 1)
 		{
-			NvM_MainFunction();
+			/* NvM is serviced by the single 5 ms diagnostic owner. */
 			Alarm100ms_QM_NVM = 0;
 		}
 		else
@@ -278,6 +302,10 @@ void QM_DIAG(void *argument)
 		if(Alarm5ms_QM_DIAG == 1)
 		{
 			CanSpi_MainFunction();
+            Can_MainFunction();
+            NvM_MainFunction();
+            Dem_MainFunction();
+			CanTp_MainFunction();
 			Dcm_MainFunction();
 			Alarm5ms_QM_DIAG = 0;
 		}

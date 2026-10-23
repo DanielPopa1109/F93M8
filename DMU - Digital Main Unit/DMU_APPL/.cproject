@@ -67,6 +67,7 @@
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/APPL/RevCam}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Com/CanH}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Diag/Dcm}&quot;"/>
+									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/APPL/DiagMonitor}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Diag/Dem}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Mem/Nvm}&quot;"/>
 									<listOptionValue builtIn="false" value="&quot;${workspace_loc:/${ProjName}/BSW/Sys/DcmiH}&quot;"/>
@@ -80,7 +81,21 @@
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Device/ST/STM32F4xx/Include"/>
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Include"/>
 									<listOptionValue builtIn="false" value="../Core/ThreadSafe"/>
-								</option>
+								<listOptionValue builtIn="false" value="../BSW/Com/Can"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanIf"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanTp"/>
+<listOptionValue builtIn="false" value="../BSW/Com/PduR"/>
+<listOptionValue builtIn="false" value="../BSW/Mem"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Crc"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Fls"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/MemIf"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dcm"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dem"/>
+<listOptionValue builtIn="false" value="../BSW/Com/Com"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanNm"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanSM"/>
+<listOptionValue builtIn="false" value="../BSW/Com/ComM"/>
+</option>
 								<option id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.option.warnings.fatal.2121163847" name="Abort compilation on first error (-Wfatal-errors)" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.option.warnings.fatal" useByScannerDiscovery="false" value="false" valueType="boolean"/>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.1848374427" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
@@ -141,6 +156,7 @@
 						<entry excluding="NvmSDIO" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW/Mem/Nvm"/>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Sys/EcuM"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW/Com/I2cH"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="APPL/DiagMonitor"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="APPL/RevCam"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Middlewares"/>
 						<entry flags="VALUE_WORKSPACE_PATH" kind="sourcePath" name="BSW/Sys/DcmiH"/>
@@ -219,7 +235,21 @@
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Device/ST/STM32F4xx/Include"/>
 									<listOptionValue builtIn="false" value="C:/Users/Daniel/STM32Cube/Repository/STM32Cube_FW_F4_V1.28.1/Drivers/CMSIS/Include"/>
 									<listOptionValue builtIn="false" value="../Core/ThreadSafe"/>
-								</option>
+								<listOptionValue builtIn="false" value="../BSW/Com/Can"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanIf"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanTp"/>
+<listOptionValue builtIn="false" value="../BSW/Com/PduR"/>
+<listOptionValue builtIn="false" value="../BSW/Mem"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Crc"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/Fls"/>
+<listOptionValue builtIn="false" value="../BSW/Mem/MemIf"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dcm"/>
+<listOptionValue builtIn="false" value="../BSW/Diag/Dem"/>
+<listOptionValue builtIn="false" value="../BSW/Com/Com"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanNm"/>
+<listOptionValue builtIn="false" value="../BSW/Com/CanSM"/>
+<listOptionValue builtIn="false" value="../BSW/Com/ComM"/>
+</option>
 								<inputType id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c.48650527" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.c.compiler.input.c"/>
 							</tool>
 							<tool id="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler.1452764277" name="MCU G++ Compiler" superClass="com.st.stm32cube.ide.mcu.gnu.managedbuild.tool.cpp.compiler">
@@ -277,6 +307,7 @@
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW/Com/I2cH"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW/Sys/FsmcH"/>
 						<entry excluding="Diag|Io|Mem|Sys|Com" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW"/>
+						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="APPL/DiagMonitor"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="APPL/RevCam"/>
 						<entry excluding="CrcH|WdgH|RngH|FsmcH|DcmiH|DmaH|EcuM|Wdg|SysMgr" flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="BSW/Sys"/>
 						<entry flags="VALUE_WORKSPACE_PATH|RESOLVED" kind="sourcePath" name="Middlewares"/>

@@ -1,11 +1,17 @@
 #include "CanH.h"
+#include "../CanNm/CanNm.h"
 #include "can.h"
 #include "Dem.h"
 #include "rtc.h"
+#include "../Can/Can.h"
+#include <string.h>
+#include "../Com/Com.h"
+#include "../CanSM/CanSM.h"
+#include "../CanIf/CanIf.h"
 
 __attribute__((section(".ccmram"))) uint32 CanH_MainCounter = 0;
 __attribute__((section(".ccmram"))) uint32 CanH_Status = 0;
-__attribute__((section(".ccmram"))) uint32 CanH_ErrArr[21] = {0};
+__attribute__((section(".ccmram"))) uint32 CanH_ErrArr[22] = {0};
 __attribute__((section(".ccmram"))) uint32 CanH_RxFifo0MsgPendingCnt = 0;
 __attribute__((section(".ccmram"))) uint32 CanH_RxFifo0FullCnt = 0;
 __attribute__((section(".ccmram"))) CAN_RxHeaderTypeDef CanH_RxHeader = {0, 0, 0, 0, 0, 0, 0};
@@ -35,8 +41,6 @@ __attribute__((section(".ccmram"))) uint8 CanH_RxSig_Recirculation = 0;
 __attribute__((section(".ccmram"))) uint8 CanH_RxSig_FanValue = 0;
 __attribute__((section(".ccmram"))) uint8 CanH_RxSig_ClimaTemp = 0;
 __attribute__((section(".ccmram"))) uint8 CanH_RxSig_AutoClimate = 0;
-__attribute__((section(".ccmram"))) uint8 CanH_DiagArray[8] = {0};
-__attribute__((section(".ccmram"))) CAN_RxHeaderTypeDef CanH_DiagRxHeader = {0, 0, 0, 0, 0, 0, 0};
 __attribute__((section(".ccmram"))) uint32 CanH_VehState_MissCnt = 0;
 __attribute__((section(".ccmram"))) uint32 CanH_BodyState_MissCnt = 0;
 __attribute__((section(".ccmram"))) uint32 CanH_BodyState2_MissCnt = 0;
@@ -75,7 +79,24 @@ extern __attribute__((section(".ccmram"))) uint32 DataRecorder_KilometerPerDcy;
 extern CAN_HandleTypeDef hcan1;
 extern RTC_HandleTypeDef hrtc;
 extern void EcuM_PerformReset(uint8 param);
+static uint16_t CanH_DiagnosticHoldTicks;
 
+static void CanH_DiagnosticRx(void)
+{
+    Can_FrameType frame = {0};
+    if (CanH_RxHeader.IDE != CAN_ID_STD || CanH_RxHeader.RTR != CAN_RTR_DATA ||
+        CanH_RxHeader.StdId != 0x710U || CanH_RxHeader.DLC < 2U ||
+        CanH_RxHeader.DLC > 8U ||
+        (CanH_RxData[0] != 0x56U && CanH_RxData[0] != 0x41U)) return;
+    frame.id = (uint16_t)CanH_RxHeader.StdId;
+    frame.dlc = (uint8_t)CanH_RxHeader.DLC;
+    memcpy(frame.data, CanH_RxData, frame.dlc);
+    Can_RxIndication(&frame);
+    CanH_RequestBusSleep = 0U;
+    if (CanH_CommunicationState != CC_ACTIVE) CanH_CommunicationState = FULL_COMMUNICATION;
+    CanH_DiagnosticHoldTicks = 1000U; /* Five seconds after the last addressed frame. */
+    if (EcuM_StopModeActive != 0U) EcuM_PerformReset(0U);
+}
 void CanH_MainFunction(void);
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan);
 void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan);
@@ -95,7 +116,7 @@ void CanH_MainFunction(void)
 				CAN_IT_BUSOFF |
 				CAN_IT_LAST_ERROR_CODE |
 				CAN_IT_ERROR;
-		HAL_CAN_ActivateNotification(&hcan1, notificationLocal);
+		HAL_CAN_ActivateNotification(&hcan1, notificationLocal | CAN_IT_TX_MAILBOX_EMPTY | CAN_IT_BUSOFF);
 		CanH_CommunicationState = PARTIAL_COMMUNICATION;
 		CanH_TxHeader.DLC = 1;
 		CanH_TxHeader.IDE = CAN_ID_STD;
@@ -124,7 +145,7 @@ void CanH_MainFunction(void)
 
 	if((FULL_COMMUNICATION == CanH_CommunicationState || PARTIAL_COMMUNICATION == CanH_CommunicationState) && CC_ACTIVE != CanH_CommunicationState)
 	{
-		for(uint8 i = 0; i < 21; i++) CanH_ErrArr[i] = 0;
+		for(uint8 i = 0; i < 22; i++) CanH_ErrArr[i] = 0;
 		CanH_BodyState_MissCnt++;
 		CanH_VehState_MissCnt++;
 		CanH_DataRecorder_MissCnt++;
@@ -176,7 +197,7 @@ void CanH_MainFunction(void)
 		}
 		else Dem_SetDtc(DEM_BODYSTATE2_MESSAGEMISSING_ID, 0);
 
-		if(CanH_MainCounter % 207 == 0)
+		if(0 /* COM owns configured 207-tick PDU. */)
 		{
 			CanH_TxHeader.DLC = 1;
 			CanH_TxHeader.IDE = CAN_ID_STD;
@@ -190,7 +211,7 @@ void CanH_MainFunction(void)
 			/* Do nothing. */
 		}
 
-		if(CanH_MainCounter % 205 == 0)
+		if(0 /* COM owns configured 205-tick PDU. */)
 		{
 
 			CanH_TxHeader.DLC = 8;
@@ -215,7 +236,9 @@ void CanH_MainFunction(void)
 	{
 		/* Do nothing. */
 	}
-	if(1000 <= CanH_NoCommCounter) CanH_CommunicationState = NO_COMMUNICATION;
+	if (CanH_DiagnosticHoldTicks > 0U) --CanH_DiagnosticHoldTicks;
+	if(200 <= CanH_NoCommCounter && CanH_DiagnosticHoldTicks == 0U)
+		CanH_CommunicationState = NO_COMMUNICATION;
 	else
 	{
 		/* Do nothing. */
@@ -236,6 +259,7 @@ void CanH_MainFunction(void)
 }
 void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *hcan)
 {
+    if(hcan==&hcan1) { if(HAL_CAN_GetError(hcan)&HAL_CAN_ERROR_BOF) Can_BusOff(); }
 	switch(hcan->ErrorCode)
 	{
 	case HAL_CAN_ERROR_EWG:
@@ -330,11 +354,15 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	if(1u == EcuM_StopModeActive)
 	{
 		HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CanH_RxHeader, CanH_RxData);
+        if(CanH_RxHeader.IDE!=CAN_ID_STD || CanH_RxHeader.RTR!=CAN_RTR_DATA || !Com_ValidateRxPdu((uint16_t)CanH_RxHeader.StdId,(uint8_t)CanH_RxHeader.DLC)) return;
+        CanH_DiagnosticRx();
+        if(CanH_RxHeader.IDE==CAN_ID_STD && CanH_RxHeader.RTR==CAN_RTR_DATA) Com_RxIndication((uint16_t)CanH_RxHeader.StdId,CanH_RxData,(uint8_t)CanH_RxHeader.DLC);
 		/* NM3 */
-		if(0x510 == CanH_RxHeader.StdId)
+		if(0x3FF == CanH_RxHeader.StdId && CanH_RxHeader.IDE == CAN_ID_STD && CanH_RxHeader.RTR == CAN_RTR_DATA && CanH_RxHeader.DLC == 1U)
 		{
-			CanH_RxSig_Networkmanagement3 = CanH_RxData[1];
-			if(0x11 == CanH_RxData[1])
+			CanNm_RxIndication(0x3FFU, CanH_RxData, CanH_RxHeader.DLC);
+			CanH_RxSig_Networkmanagement3 = CanH_RxData[0];
+			if(0xFF == CanH_RxData[0])
 			{
 				EcuM_PerformReset(0);
 			}
@@ -353,11 +381,15 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 	{
 		CanH_RxFifo0MsgPendingCnt++;
 		HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CanH_RxHeader, CanH_RxData);
+        if(CanH_RxHeader.IDE!=CAN_ID_STD || CanH_RxHeader.RTR!=CAN_RTR_DATA || !Com_ValidateRxPdu((uint16_t)CanH_RxHeader.StdId,(uint8_t)CanH_RxHeader.DLC)) return;
+        CanH_DiagnosticRx();
+        if(CanH_RxHeader.IDE==CAN_ID_STD && CanH_RxHeader.RTR==CAN_RTR_DATA) Com_RxIndication((uint16_t)CanH_RxHeader.StdId,CanH_RxData,(uint8_t)CanH_RxHeader.DLC);
 		/* NM3 */
-		if(0x510 == CanH_RxHeader.StdId)
+		if(0x3FF == CanH_RxHeader.StdId && CanH_RxHeader.IDE == CAN_ID_STD && CanH_RxHeader.RTR == CAN_RTR_DATA && CanH_RxHeader.DLC == 1U)
 		{
-			CanH_RxSig_Networkmanagement3 = CanH_RxData[1];
-			if(0x11 == CanH_RxData[1])
+			CanNm_RxIndication(0x3FFU, CanH_RxData, CanH_RxHeader.DLC);
+			CanH_RxSig_Networkmanagement3 = CanH_RxData[0];
+			if(0xFF == CanH_RxData[0])
 			{
 				CanH_RequestBusSleep = 0;
 				if(CC_ACTIVE != CanH_CommunicationState) CanH_CommunicationState = FULL_COMMUNICATION;
@@ -379,11 +411,11 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* VehicleState */
 		if(0x97 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_Ignition = CanH_RxData[0];
-			CanH_RxSig_Speed = CanH_RxData[4];
-			CanH_RxSig_Rpm = CanH_RxData[3];
-			CanH_RxSig_Gear = CanH_RxData[1];
-			CanH_RxSig_IrSensStat = CanH_RxData[2];
+
+
+
+
+
 			CanH_VehState_MissCnt = 0;
 		}
 		else
@@ -393,12 +425,12 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* StatusBodyControl */
 		if(0x98 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_Recirculation = CanH_RxData[0];
-			CanH_RxSig_FogLights = CanH_RxData[1];
-			CanH_RxSig_HighBeam = CanH_RxData[2];
-			CanH_RxSig_TemperatureSensor = CanH_RxData[3];
-			CanH_RxSig_TurnSignal = CanH_RxData[4];
-			CanH_RxSig_AutoClimate = CanH_RxData[5];
+
+
+
+
+
+
 			CanH_BodyState_MissCnt = 0;
 		}
 		else
@@ -408,10 +440,10 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* StatusBodyControl2 */
 		if(0x99 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_FanValue = CanH_RxData[0];
-			CanH_RxSig_DisplayMode = CanH_RxData[1];
-			CanH_RxSig_ClimaTemp = CanH_RxData[2];
-			CanH_RxSig_RotaryLightSwitch = CanH_RxData[3];
+
+
+
+
 			CanH_BodyState2_MissCnt = 0;
 		}
 		else
@@ -426,7 +458,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		/* DataRecorder */
 		if(0x10f == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_DrivecycleStatus = CanH_RxData[0];
+
 			CanH_DataRecorder_MissCnt = 0;
 		}
 		else
@@ -451,22 +483,7 @@ void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
 		{
 			/* Do nothing. */
 		}
-		/* Diagnosis */
-		if(0x702 == CanH_RxHeader.StdId)
-		{
-			CanH_DiagRxHeader.DLC = CanH_RxHeader.DLC;
-			CanH_DiagRxHeader.ExtId = CanH_RxHeader.ExtId;
-			CanH_DiagRxHeader.FilterMatchIndex = CanH_RxHeader.FilterMatchIndex;
-			CanH_DiagRxHeader.IDE = CanH_RxHeader.IDE;
-			CanH_DiagRxHeader.RTR = CanH_RxHeader.RTR;
-			CanH_DiagRxHeader.StdId = CanH_RxHeader.StdId;
-			CanH_DiagRxHeader.Timestamp = CanH_RxHeader.Timestamp;
-			for(uint8 i = 0; i < 8; i++) CanH_DiagArray[i] = CanH_RxData[i];
-		}
-		else
-		{
-			/* Do nothing. */
-		}
+		/* Routed DMU diagnostics were dispatched immediately after FIFO read. */
 		CanH_RxHeader.DLC = 0;
 		CanH_RxHeader.ExtId = 0;
 		CanH_RxHeader.FilterMatchIndex = 0;
@@ -523,11 +540,15 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 	if(1u == EcuM_StopModeActive)
 	{
 		HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CanH_RxHeader, CanH_RxData);
+        if(CanH_RxHeader.IDE!=CAN_ID_STD || CanH_RxHeader.RTR!=CAN_RTR_DATA || !Com_ValidateRxPdu((uint16_t)CanH_RxHeader.StdId,(uint8_t)CanH_RxHeader.DLC)) return;
+        CanH_DiagnosticRx();
+        if(CanH_RxHeader.IDE==CAN_ID_STD && CanH_RxHeader.RTR==CAN_RTR_DATA) Com_RxIndication((uint16_t)CanH_RxHeader.StdId,CanH_RxData,(uint8_t)CanH_RxHeader.DLC);
 		/* NM3 */
-		if(0x510 == CanH_RxHeader.StdId)
+		if(0x3FF == CanH_RxHeader.StdId && CanH_RxHeader.IDE == CAN_ID_STD && CanH_RxHeader.RTR == CAN_RTR_DATA && CanH_RxHeader.DLC == 1U)
 		{
-			CanH_RxSig_Networkmanagement3 = CanH_RxData[1];
-			if(0x11 == CanH_RxData[1])
+			CanNm_RxIndication(0x3FFU, CanH_RxData, CanH_RxHeader.DLC);
+			CanH_RxSig_Networkmanagement3 = CanH_RxData[0];
+			if(0xFF == CanH_RxData[0])
 			{
 				EcuM_PerformReset(0);
 			}
@@ -546,11 +567,15 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 	{
 		CanH_RxFifo0MsgPendingCnt++;
 		HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &CanH_RxHeader, CanH_RxData);
+        if(CanH_RxHeader.IDE!=CAN_ID_STD || CanH_RxHeader.RTR!=CAN_RTR_DATA || !Com_ValidateRxPdu((uint16_t)CanH_RxHeader.StdId,(uint8_t)CanH_RxHeader.DLC)) return;
+        CanH_DiagnosticRx();
+        if(CanH_RxHeader.IDE==CAN_ID_STD && CanH_RxHeader.RTR==CAN_RTR_DATA) Com_RxIndication((uint16_t)CanH_RxHeader.StdId,CanH_RxData,(uint8_t)CanH_RxHeader.DLC);
 		/* NM3 */
-		if(0x510 == CanH_RxHeader.StdId)
+		if(0x3FF == CanH_RxHeader.StdId && CanH_RxHeader.IDE == CAN_ID_STD && CanH_RxHeader.RTR == CAN_RTR_DATA && CanH_RxHeader.DLC == 1U)
 		{
-			CanH_RxSig_Networkmanagement3 = CanH_RxData[1];
-			if(0x11 == CanH_RxData[1])
+			CanNm_RxIndication(0x3FFU, CanH_RxData, CanH_RxHeader.DLC);
+			CanH_RxSig_Networkmanagement3 = CanH_RxData[0];
+			if(0xFF == CanH_RxData[0])
 			{
 				CanH_RequestBusSleep = 0;
 				if(CC_ACTIVE != CanH_CommunicationState) CanH_CommunicationState = FULL_COMMUNICATION;
@@ -572,11 +597,11 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		/* VehicleState */
 		if(0x97 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_Ignition = CanH_RxData[0];
-			CanH_RxSig_Speed = CanH_RxData[4];
-			CanH_RxSig_Rpm = CanH_RxData[3];
-			CanH_RxSig_Gear = CanH_RxData[1];
-			CanH_RxSig_IrSensStat = CanH_RxData[2];
+
+
+
+
+
 			CanH_VehState_MissCnt = 0;
 		}
 		else
@@ -586,12 +611,12 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		/* StatusBodyControl */
 		if(0x98 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_Recirculation = CanH_RxData[0];
-			CanH_RxSig_FogLights = CanH_RxData[1];
-			CanH_RxSig_HighBeam = CanH_RxData[2];
-			CanH_RxSig_TemperatureSensor = CanH_RxData[3];
-			CanH_RxSig_TurnSignal = CanH_RxData[4];
-			CanH_RxSig_AutoClimate = CanH_RxData[5];
+
+
+
+
+
+
 			CanH_BodyState_MissCnt = 0;
 		}
 		else
@@ -601,10 +626,10 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		/* StatusBodyControl2 */
 		if(0x99 == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_FanValue = CanH_RxData[0];
-			CanH_RxSig_DisplayMode = CanH_RxData[1];
-			CanH_RxSig_ClimaTemp = CanH_RxData[2];
-			CanH_RxSig_RotaryLightSwitch = CanH_RxData[3];
+
+
+
+
 			CanH_BodyState2_MissCnt = 0;
 		}
 		else
@@ -619,7 +644,7 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		/* DataRecorder */
 		if(0x10f == CanH_RxHeader.StdId)
 		{
-			CanH_RxSig_DrivecycleStatus = CanH_RxData[0];
+
 			CanH_DataRecorder_MissCnt = 0;
 		}
 		else
@@ -644,22 +669,7 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		{
 			/* Do nothing. */
 		}
-		/* Diagnosis */
-		if(0x702 == CanH_RxHeader.StdId)
-		{
-			CanH_DiagRxHeader.DLC = CanH_RxHeader.DLC;
-			CanH_DiagRxHeader.ExtId = CanH_RxHeader.ExtId;
-			CanH_DiagRxHeader.FilterMatchIndex = CanH_RxHeader.FilterMatchIndex;
-			CanH_DiagRxHeader.IDE = CanH_RxHeader.IDE;
-			CanH_DiagRxHeader.RTR = CanH_RxHeader.RTR;
-			CanH_DiagRxHeader.StdId = CanH_RxHeader.StdId;
-			CanH_DiagRxHeader.Timestamp = CanH_RxHeader.Timestamp;
-			for(uint8 i = 0; i < 8; i++) CanH_DiagArray[i] = CanH_RxData[i];
-		}
-		else
-		{
-			/* Do nothing. */
-		}
+		/* Routed DMU diagnostics were dispatched immediately after FIFO read. */
 		CanH_RxHeader.DLC = 0;
 		CanH_RxHeader.ExtId = 0;
 		CanH_RxHeader.FilterMatchIndex = 0;
@@ -710,3 +720,16 @@ void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
 		}
 	}
 }
+
+volatile uint32_t Can_DiagMailbox;
+volatile uint16_t Can_AppMailboxIds[3];
+static void CanH_Complete(uint32_t mailbox,uint8_t ok) {
+ if(Can_DiagMailbox==mailbox) { Can_DiagMailbox=0U; Can_TxConfirmation(ok); }
+ else {uint8_t i=mailbox==CAN_TX_MAILBOX0?0:(mailbox==CAN_TX_MAILBOX1?1:2);uint16_t id=Can_AppMailboxIds[i];Can_AppMailboxIds[i]=0;if(id)CanIf_ApplicationTxConfirmation(id,ok);}
+}
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX0,1); }
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX1,1); }
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX2,1); }
+void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX0,0); }
+void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX1,0); }
+void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef *h) { if(h==&hcan1) CanH_Complete(CAN_TX_MAILBOX2,0); }

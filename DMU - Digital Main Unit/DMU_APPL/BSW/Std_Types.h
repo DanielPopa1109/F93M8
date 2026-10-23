@@ -1,17 +1,21 @@
-/*
- * Std_Types.h
- *
- *  Created on: Jun 22, 2024
- *      Author: Daniel
- */
+#ifndef DMU_STD_TYPES_H
+#define DMU_STD_TYPES_H
 
-#ifndef STD_TYPES_H_
-#define STD_TYPES_H_
+#include "Platform_Types.h"
+typedef uint8 Std_ReturnType;
 
-#include <stdint.h>
+typedef struct {
+    uint16 vendorID;
+    uint16 moduleID;
+    uint8 sw_major_version;
+    uint8 sw_minor_version;
+    uint8 sw_patch_version;
+} Std_VersionInfoType;
 
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
+#define TRUE ((boolean)1U)
+#define FALSE ((boolean)0U)
+#define E_OK ((Std_ReturnType)0U)
+#define E_NOT_OK ((Std_ReturnType)1U)
+#define NULL_PTR ((void *)0)
 
-#endif /* STD_TYPES_H_ */
+#endif

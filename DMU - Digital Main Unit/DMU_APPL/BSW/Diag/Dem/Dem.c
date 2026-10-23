@@ -1,213 +1,22 @@
 #include "Dem.h"
-#include "can.h"
-#include <string.h>
-#include "DigitalCluster.h"
 
-__attribute__((section(".ccmram"))) uint32 Dem_MainCounter = 0;
-__attribute__((section(".ccmram"))) uint32 Dem_DTCArray[DEM_NUMBER_OF_DTCS];
-__attribute__((section(".ccmram"))) uint8 Dem_DTCSettingDeactivated = 0;
-__attribute__((section(".ccmram"))) CAN_TxHeaderTypeDef Dem_TxHeader = {0, 0, 0, 0, 0, 0};
-__attribute__((section(".ccmram"))) uint8 Dem_TxData[8] = {0};
-__attribute__((section(".ccmram"))) uint32 Dem_TxMailbox = 0;
-__attribute__((section(".ccmram"))) uint8 Dem_DigitalClusterErrorStatus = 0;
-__attribute__((section(".ccmram"))) uint8 Dem_ReverseCameraErrorStatus = 0;
-extern __attribute__((section(".ccmram"))) uint32 CanH_ErrArr[21];
-extern __attribute__((section(".ccmram"))) uint32 I2cH_ErrArr[9];
-extern __attribute__((section(".ccmram"))) uint32 DcmiH_ErrArr[4];
-extern __attribute__((section(".ccmram"))) uint32 DcmiH_DmaErrArr[7];
-extern __attribute__((section(".ccmram"))) uint32 RevCam_DcmiStatus;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_I2cStatus;
-extern __attribute__((section(".ccmram"))) uint8 RevCam_InitStatus;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_I2cInitRetry;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_DcmiInitRetry;
-extern __attribute__((section(".ccmram"))) uint32 RevCam_OV7670InitRetry;
-extern __attribute__((section(".ncr"))) uint32 Dcm_AliveCounter;
-extern __attribute__((section(".ccmram"))) uint32 FsmcH_Status;
-extern __attribute__((section(".ccmram"))) uint32 FsmcH_InitRetry;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_RetValInit;
-extern __attribute__((section(".ccmram"))) uint32 DigitalCluster_InitRetry;
-extern __attribute__((section(".ccmram"))) uint16 DigitalCluster_ReadDisplayStatus_RegisterValue;
-extern __attribute__((section(".ccmram"))) uint8 DigitalCluster_ReadDisplayPowerMode_RegisterValue;
+/* The nine legacy (event ID, status) pairs retain their on-flash positions. */
+__attribute__((section(".ccmram"))) uint32 Dem_DTCArray[DEM_LEGACY_ARRAY_SIZE];
 
-void Dem_MainFunction(void);
-void Dem_SetDtc(uint8 IDPrimary, uint8 Status);
-void Dem_ClearDtc(void);
+void Dem_SetDtc(uint8 EventId, uint8 Failed)
+{
+    (void)Dem_SetEventStatus(EventId, Failed != 0U ? DEM_EVENT_STATUS_FAILED :
+                                                  DEM_EVENT_STATUS_PASSED);
+}
 
 void Dem_ClearDtc(void)
 {
-	for(uint8 i = 0; i < 21; i++)
-	{
-		CanH_ErrArr[i] = 0;
-		if(i < 7)
-		{
-			DcmiH_DmaErrArr[i] = 0;
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		if (i < 4) DcmiH_ErrArr[i] = 0;
-		else
-		{
-			/* Do nothing. */
-		}
-		if(i < 9) I2cH_ErrArr[i] = 0;
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	memset(Dem_DTCArray, 0, sizeof(Dem_DTCArray));
+    if (Dem_SelectDTC(0U, DEM_DTC_GROUP_ALL_DTCS, DEM_DTC_FORMAT_UDS,
+                      DEM_DTC_ORIGIN_PRIMARY_MEMORY) == E_OK)
+        (void)Dem_ClearDTC(0U);
 }
-void Dem_SetDtc(uint8 IDPrimary, uint8 Status)
-{
-	if(0 == Dem_DTCSettingDeactivated)
-	{
-		if(1 == Status)
-		{
-			if(Dem_DTCArray[(IDPrimary - 0x01) * 2 + 1] == 1 || Dem_DTCArray[(IDPrimary - 0x01) * 2 + 1] == 0)
-			{
-				Dem_DTCArray[(IDPrimary - 0x01) * 2] = IDPrimary;
-				Dem_DTCArray[(IDPrimary - 0x01) * 2 + 1] = Status + 1;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			if(Dem_DTCArray[(IDPrimary - 0x01) * 2 + 1] == 1)
-			{
-				Dem_DTCArray[(IDPrimary - 0x01) * 2] = IDPrimary;
-				Dem_DTCArray[(IDPrimary - 0x01) * 2 + 1] = Status + 1;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-}
-void Dem_MainFunction(void)
-{
-	if(0 == Dem_MainCounter)
-	{
-		for(uint8 i = 0; i < DEM_NUMBER_OF_DTCS; i++)
-		{
-			if(0u == i)
-			{
-				/* Do nothing. */
-			}
-			else if(1u == i)
-			{
-				Dem_DTCArray[i] = 0u;
-			}
-			else if(2u == i)
-			{
-				/* Do nothing. */
-			}
-			else
-			{
-				/* Do nothing. */
-			}
 
-			if(i % 2 == 1 && 2u < i)
-			{
-				Dem_DTCArray[i] = 0u;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	for(uint8 i = 0; i < 21; i++)
-	{
-		if(0 != CanH_ErrArr[i]) Dem_SetDtc(DEM_COMMUNICATION_ERROR_ID, 1);
-		else Dem_SetDtc(DEM_COMMUNICATION_ERROR_ID, 0);
-
-		if(i < 7)
-		{
-			if(0 != DcmiH_DmaErrArr[i] ||
-					10 < RevCam_DcmiInitRetry ||
-					0 != RevCam_DcmiStatus ||
-					10 < RevCam_OV7670InitRetry || (0 != RevCam_InitStatus && 0xFF != RevCam_InitStatus))
-			{
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 1);
-				Dem_ReverseCameraErrorStatus = 1;
-			}
-			else
-			{
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 0);
-				Dem_ReverseCameraErrorStatus = 0;
-			}
-
-			if(4 == FsmcH_Status ||
-					10 < FsmcH_InitRetry ||
-					(0 != DigitalCluster_RetValInit && 0xFF != DigitalCluster_RetValInit) ||
-					10 < DigitalCluster_InitRetry ||
-					DIGITALCLUSTER_LCD_DISPLAYSTATUS_REGISTERVALUE != DigitalCluster_ReadDisplayStatus_RegisterValue ||
-					DIGITALCLUSTER_LCD_POWERMODE_REGISTERVALUE != DigitalCluster_ReadDisplayPowerMode_RegisterValue)
-			{
-				Dem_SetDtc(DEM_DIGITALCLUSTER_CONTROLINTERFACE_MALFUNCTION_ID, 1);
-				Dem_DigitalClusterErrorStatus = 1;
-			}
-			else
-			{
-				Dem_SetDtc(DEM_DIGITALCLUSTER_CONTROLINTERFACE_MALFUNCTION_ID, 0);
-				Dem_DigitalClusterErrorStatus = 0;
-			}
-		}
-		if (i < 4)
-		{
-			if(0 != DcmiH_ErrArr[i] ||
-					10 < RevCam_DcmiInitRetry ||
-					0 != RevCam_DcmiStatus ||
-					10 < RevCam_OV7670InitRetry ||
-					(0 != RevCam_InitStatus && 0xFF != RevCam_InitStatus))
-			{
-				Dem_ReverseCameraErrorStatus = 1;
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 1);
-			}
-			else
-			{
-				Dem_ReverseCameraErrorStatus = 0;
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 0);
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		if(i < 9)
-		{
-			if(0 != I2cH_ErrArr[i]||
-					10 < RevCam_OV7670InitRetry ||
-					(0 != RevCam_InitStatus && 0xFF != RevCam_InitStatus) ||
-					10 < RevCam_I2cInitRetry)
-			{
-				Dem_ReverseCameraErrorStatus = 1;
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 1);
-			}
-			else
-			{
-				Dem_ReverseCameraErrorStatus = 0;
-				Dem_SetDtc(DEM_REVERSECAMERA_DCMIINTERFACE_MALFUNCTION_ID, 0);
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	Dem_MainCounter++;
+void Dem_ApplicationStatusChanged(Dem_EventIdType event,uint8 before,uint8 after) {
+ /* DMU monitors consume status through DEM; no legacy CAN failure announcement was configured. */
+ (void)event;(void)before;(void)after;
 }

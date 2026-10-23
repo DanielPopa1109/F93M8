@@ -1,19 +1,19 @@
-/* USER CODE BEGIN Header */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "spi.h"
-#include "usart.h"
 #include "gpio.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+#include "Fbl.h"
+#include "../../BSW/Com/Can/Can.h"
+#include "../../BSW/Com/CanIf/CanIf.h"
+#include "../../BSW/Com/CanTp/CanTp.h"
+#include "../../BSW/Com/PduR/PduR.h"
 #include <string.h>
 #include <stdbool.h>
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
+void SystemClock_Config(void);
+static void MX_NVIC_Init(void);
+uint32_t *FBL_ResetCounterFBL=(uint32_t *)(FBL_BOOT_MAILBOX+12U);
+static uint8_t txHardwarePending;
+static uint16_t txHardwareAge;
+#include "spi.h"
+#include "usart.h"
 typedef uint8_t uint8;
 typedef uint16_t uint16;
 typedef uint32_t uint32;
@@ -179,7 +179,8 @@ typedef struct
 #define NCR_END_ADDRESS   						0x2001FFFF
 #define FBL_BLU_RAM_EXECUTION_ADDRESS 			0x20001000
 #define NCR_SIZE          						(NCR_END_ADDRESS - NCR_START_ADDRESS + 1)
-#define APPL_START_ADDRESS 						0x800C000
+#define APPL_START_ADDRESS 						0x08060000U
+#define APPL_END_ADDRESS                         0x08080000U
 #define FBL_START_ADDRESS 						0x8000000
 #define RESET_COUNTER_ADDRESS					0x2001fdd0
 #define FBL_CANSPI_MCP2515_RESET           		0xC0
@@ -265,225 +266,116 @@ typedef struct
 #define FBL_CANSPI_MCP2515_CS_LOW()    		HAL_GPIO_WritePin(GPIOC, GPIO_PIN_4, GPIO_PIN_RESET)
 /* USER CODE END PM */
 
-/* Private variables ---------------------------------------------------------*/
 
-/* USER CODE BEGIN PV */
-FBL_CANSPI_uCAN_MSG FBL_RxFrame = {0};
-FBL_CANSPI_uCAN_MSG FBL_TxFrame = {0};
-uint32* FBL_DSC_Pointer = (uint32*)(SESSIONSTATUS_ADDR);
-uint32* FBL_ResetCounterFBL = (uint32*)(RESET_COUNTER_ADDRESS);
-FBL_DSC_t FBL_DSC_State = JUMPTOAPPL;
-uint32 FBL_ProgrammingData = 0;
-uint32 FBL_ProgrammingIndex = 0;
-uint32 FBL_ProgrammingAddress = 0;
-uint32 ROM_APPL_START_ADDR_storedValue = 0;
-uint32 ROM_APPL_START_ADDR = 0x080601A0;
-uint32 FBL_DSC_Status = 0;
-FBL_CANSPI_id_reg_t FBL_idReg = {0};
-FBL_CANSPI_CtrlStatus_t FBL_ctrlStatus = {0};
-FBL_CANSPI_CtrlErrorStatus_t FBL_errorStatus = {0};
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
-void SystemClock_Config(void);
-static void MX_NVIC_Init(void);
-/* USER CODE BEGIN PFP */
-void FBL_JumpToAppl(void);
-void FBL_DiagRoutine_ER_SoftReset(void);
-void FBL_DiagRoutine_ER_HardReset(void);
-void FBL_DiagRoutine_DSC_Programming(void);
-void FBL_DiagRoutine_DSC_Coding(void);
-void FBL_DiagRoutine_DSC_Calibration(void);
-void FBL_DiagRoutine_DSC_RequestDownload(void);
-void FBL_DiagRoutine_DSC_TransferData(void);
-void FBL_DiagRoutine_DSC_RequestTransferExit(void);
-void FBL_DiagRoutine_RAR_MassEraseAPPL(void);
-void FBL_DiagRoutine_RAR_MassEraseCODING(void);
-void FBL_DiagRoutine_RAR_MassEraseCALIBRATION(void);
-void FBL_DiagRoutine_RDBI_ReadActiveDiagnosticSession(void);
-void FBL_NvM_FlashReadData(uint32 StartSectorAddress, uint32 *RxBuf, uint16 numberofwords);
-uint32 FBL_NvM_FlashWriteData(uint32 StartSectorAddress, uint32 *Data, uint16 numberofwords);
-uint32 FBL_NvM_EraseFlash_APPL(void);
-uint32 FBL_NvM_EraseFlash_CODING(void);
-uint32 FBL_NvM_EraseFlash_CALIBRATION(void);
-uint32 FBL_NvM_GetSector(uint32 Address);
+void FBL_CanSpi_Sleep(void);
+uint8 FBL_CanSpi_Initialize(void);
+uint8 FBL_CanSpi_Transmit(FBL_CANSPI_uCAN_MSG *tempCanMsg);
+uint8 FBL_CanSpi_Receive(FBL_CANSPI_uCAN_MSG *tempCanMsg);
+uint32 FBL_CanSpi_MessagesInBuffer(void);
+uint8 CanSpi_IsBussOff(void);
+uint8 FBL_CanSpi_IsRxErrorPassive(void);
+uint8 FBL_CanSpi_IsTxErrorPassive(void);
 uint32 FBL_CanSpi_ConvertReg2ExtendedCANid(uint8 tempRXBn_EIDH, uint8 tempRXBn_EIDL, uint8 tempRXBn_SIDH, uint8 tempRXBn_SIDL);
 uint32 FBL_CanSpi_ConvertReg2StandardCANid(uint8 tempRXBn_SIDH, uint8 tempRXBn_SIDL);
-uint8 FBL_CanSpi_SPI_Rx(void);
 void FBL_CanSpi_ConvertCANid2Reg(uint32 tempPassedInID, uint8 canIdType, FBL_CANSPI_id_reg_t *passedIdReg);
-void FBL_CanSpi_SPI_Tx(uint8 data);
-void FBL_CanSpi_SPI_TxBuffer(uint8 *buffer, uint8 length);
-void FBL_CanSpi_SPI_RxBuffer(uint8 *buffer, uint8 length);
+bool FBL_CanSpi_MCP2515_Initialize(void);
+bool FBL_CanSpi_MCP2515_SetConfigMode(void);
+bool FBL_CanSpi_MCP2515_SetNormalMode(void);
+bool FBL_CanSpi_MCP2515_SetSleepMode(void);
 void FBL_CanSpi_MCP2515_Reset(void);
-void FBL_CanSpi_MCP2515_BitModify(uint8 address, uint8 mask, uint8 data);
 void FBL_CanSpi_MCP2515_ReadRxSequence(uint8 instruction, uint8 *data, uint8 length);
 void FBL_CanSpi_MCP2515_WriteByte(uint8 address, uint8 data);
 void FBL_CanSpi_MCP2515_WriteByteSequence(uint8 startAddress, uint8 endAddress, uint8 *data);
 void FBL_CanSpi_MCP2515_LoadTxSequence(uint8 instruction, uint8 *idReg, uint8 dlc, uint8 *data);
 void FBL_CanSpi_MCP2515_RequestToSend(uint8 instruction);
-uint32 FBL_CanSpi_MessagesInBuffer(void);
-uint8 FBL_CanSpi_MCP2515_ReadByte (uint8 address);
-uint8 FBL_CanSpi_IsRxErrorPassive(void);
-uint8 FBL_CanSpi_IsTxErrorPassive(void);
 uint8 FBL_CanSpi_MCP2515_ReadStatus(void);
 uint8 FBL_CanSpi_MCP2515_GetRxStatus(void);
-bool FBL_CanSpi_MCP2515_Initialize(void);
-bool FBL_CanSpi_MCP2515_SetConfigMode(void);
-bool FBL_CanSpi_MCP2515_SetNormalMode(void);
-bool FBL_CanSpi_MCP2515_SetSleepMode(void);
-void FBL_CanSpi_Sleep(void);
-uint8 FBL_CanSpi_Initialize(void);
-uint8 FBL_CanSpi_Transmit(FBL_CANSPI_uCAN_MSG *tempCanMsg);
-uint8 FBL_CanSpi_Receive(FBL_CANSPI_uCAN_MSG *tempCanMsg);
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-/* USER CODE END 0 */
-
-/**
-  * @brief  The application entry point.
-  * @retval int
-  */
-int main(void)
-{
-
-  /* USER CODE BEGIN 1 */
-  /* USER CODE END 1 */
-
-  /* MCU Configuration--------------------------------------------------------*/
-
-  /* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-  HAL_Init();
-
-  /* USER CODE BEGIN Init */
-  /* USER CODE END Init */
-
-  /* Configure the system clock */
-  SystemClock_Config();
-
-  /* USER CODE BEGIN SysInit */
-  /* USER CODE END SysInit */
-
-  /* Initialize all configured peripherals */
-  MX_GPIO_Init();
-  MX_SPI1_Init();
-  MX_USART1_UART_Init();
-
-  /* Initialize interrupts */
-  MX_NVIC_Init();
-  /* USER CODE BEGIN 2 */
-	FBL_ProgrammingAddress = 0;
-	FBL_ProgrammingIndex = 0;
-	FBL_CanSpi_Initialize();
-
-	if((RCC->CSR & RCC_CSR_PORRSTF) != 0)
-	{
-		for(uint32* addr = ((uint32_t*)0x2001FDA8); addr <= ((uint32_t*)0x2001FFFF); addr++) *addr = 0;
-		/* Reset the flag. */
-		RCC->CSR |= RCC_CSR_PORRSTF;
-	}/* Check if brown-out reset wake-up event occurred.*/
-	else if((RCC->CSR & RCC_CSR_BORRSTF) != 0)
-	{
-		for(uint32* addr = ((uint32_t*)0x2001FDA8); addr <= ((uint32_t*)0x2001FFFF); addr++) *addr = 0;
-		/* Reset the flag. */
-		RCC->CSR |= RCC_CSR_BORRSTF;
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-
-	if(*FBL_ResetCounterFBL == 50)
-	{
-		FBL_DSC_Status = PROGRAMMING;
-	}
-	else
-	{
-		FBL_NvM_FlashReadData(ROM_APPL_START_ADDR, &ROM_APPL_START_ADDR_storedValue, 1);
-		if(ROM_APPL_START_ADDR_storedValue != 0xFFFFFFFF)
-		{
-			FBL_DSC_Pointer = (uint32*)(SESSIONSTATUS_ADDR);
-			FBL_DSC_Status = *FBL_DSC_Pointer;
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-
-	if((FBL_DSC_Status == PROGRAMMING) || (FBL_DSC_Status == SOFTRESET) || (FBL_DSC_Status == HARDRESET) || (FBL_DSC_Status == CODING) || (FBL_DSC_Status == CALIBRATION)) FBL_DSC_State = FBL_DSC_Status;
-	else
-	{
-		if(ROM_APPL_START_ADDR_storedValue != 0xFFFFFFFF)
-		{
-			FBL_JumpToAppl();
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-  /* USER CODE END 2 */
-
-  /* Infinite loop */
-  /* USER CODE BEGIN WHILE */
-	while (1)
-	{
-    /* USER CODE END WHILE */
-
-    /* USER CODE BEGIN 3 */
-		switch(FBL_DSC_State)
-		{
-		case CODING:
-			FBL_DiagRoutine_DSC_Coding();
-			break;
-		case CALIBRATION:
-			FBL_DiagRoutine_DSC_Calibration();
-			break;
-		case PROGRAMMING:
-			FBL_DiagRoutine_DSC_Programming();
-			break;
-		case HARDRESET:
-			FBL_DiagRoutine_ER_HardReset();
-			break;
-		case SOFTRESET:
-			FBL_DiagRoutine_ER_SoftReset();
-			break;
-		default:
-			if(FBL_CanSpi_Receive(&FBL_RxFrame))
-			{
-				if(FBL_RxFrame.frame.id == 0x700 && FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x02 && FBL_RxFrame.frame.data0 == 0x02)
-				{
-					FBL_TxFrame.frame.dlc = 3;
-					FBL_TxFrame.frame.id = FBL_RxFrame.frame.id + 1;
-					FBL_TxFrame.frame.idType = 1;
-					FBL_TxFrame.frame.data0 = 0x02;
-					FBL_TxFrame.frame.data1 = 0x50;
-					FBL_TxFrame.frame.data2 = 0x02;
-					FBL_CanSpi_Transmit(&FBL_TxFrame);
-					FBL_DSC_State = PROGRAMMING;
-					FBL_DiagRoutine_DSC_Programming();
-				}
-				else
-				{
-					/* Do nothing. */
-				}
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			break;
-		}
-	}
-  /* USER CODE END 3 */
+void FBL_CanSpi_MCP2515_BitModify(uint8 address, uint8 mask, uint8 data);
+void FBL_CanSpi_SPI_Tx(uint8 data);
+void FBL_CanSpi_SPI_TxBuffer(uint8 *buffer, uint8 length);
+uint8 FBL_CanSpi_SPI_Rx(void);
+void FBL_CanSpi_SPI_RxBuffer(uint8 *buffer, uint8 length);
+FBL_CANSPI_id_reg_t FBL_idReg;
+FBL_CANSPI_CtrlStatus_t FBL_ctrlStatus;
+FBL_CANSPI_CtrlErrorStatus_t FBL_errorStatus;
+uint8 FBL_CanSpi_MCP2515_ReadByte(uint8 address);
+int Fbl_BoardCanTransmit(const uint8_t *p) {
+ FBL_CANSPI_id_reg_t id={0};
+ if(txHardwarePending || (FBL_CanSpi_MCP2515_ReadByte(0x30)&8U)) return 1;
+ FBL_CanSpi_ConvertCANid2Reg(0x710,1,&id);
+ FBL_CanSpi_MCP2515_BitModify(0x2C,4,0);
+ FBL_CanSpi_MCP2515_LoadTxSequence(FBL_CANSPI_MCP2515_LOAD_TXB0SIDH,&id.tempSIDH,8,(uint8 *)p);
+ txHardwarePending=1;txHardwareAge=0;
+ FBL_CanSpi_MCP2515_RequestToSend(FBL_CANSPI_MCP2515_RTS_TX0);return 0;
 }
+static void boardPoll(void) {
+ FBL_CANSPI_uCAN_MSG f={0};Can_FrameType frame;
+ uint8_t count=0,ctrl,flags;
+ if(txHardwarePending) {
+  ctrl=FBL_CanSpi_MCP2515_ReadByte(0x30);flags=FBL_CanSpi_MCP2515_ReadByte(0x2C);
+  if(!(ctrl&8U) || ++txHardwareAge>=200U) {
+   if(ctrl&8U)FBL_CanSpi_MCP2515_BitModify(0x30,8,0);
+   txHardwarePending=0;Can_TxConfirmation(!(ctrl&0x58U) && (flags&4U));
+   FBL_CanSpi_MCP2515_BitModify(0x2C,4,0);
+  }
+ }
+ while(count++<2U && FBL_CanSpi_Receive(&f)) {
+  if(f.frame.idType!=1 || f.frame.id!=0x710 || f.frame.dlc>8) continue;
+  frame.id=0x710;frame.dlc=f.frame.dlc;memcpy(frame.data,&f.frame.data0,frame.dlc);Can_RxIndication(&frame);
+ }
+}
+int Fbl_BoardRead(uint32_t a,void *p,uint32_t n) {
+ if(!p || a<FBL_APP_START || a>=FBL_APP_END || n>FBL_APP_END-a) return 1;
+ memcpy(p,(const void *)(uintptr_t)a,n);return 0;
+}
+int Fbl_BoardProgram(uint32_t a,const void *p,uint32_t n) {
+ const uint8_t *src=p;uint32_t i;int error=0;
+ if(!p || !n || a<FBL_APP_START || a>=FBL_APP_END || n>FBL_APP_END-a) return 1;
+ if(HAL_FLASH_Unlock()!=HAL_OK){(void)HAL_FLASH_Lock();return 1;}
+ for(i=0;i<n;++i) {
+  if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE,a+i,src[i])!=HAL_OK || *(volatile uint8_t *)(uintptr_t)(a+i)!=src[i]) {error=1;break;}
+ }
+ if(HAL_FLASH_Lock()!=HAL_OK)error=1;return error;
+}
+int Fbl_BoardErase(void) {
+ FLASH_EraseInitTypeDef e={0};uint32_t error=0,at;int result=0;
+ e.TypeErase=FLASH_TYPEERASE_SECTORS;e.VoltageRange=FLASH_VOLTAGE_RANGE_3;e.Sector=7U;e.NbSectors=1U;
+ if(HAL_FLASH_Unlock()!=HAL_OK){(void)HAL_FLASH_Lock();return 1;}
+ if(HAL_FLASHEx_Erase(&e,&error)!=HAL_OK || error!=0xFFFFFFFFU)result=1;
+ if(HAL_FLASH_Lock()!=HAL_OK)result=1;
+ if(!result)for(at=FBL_APP_START;at<FBL_APP_END;at+=4)if(*(volatile uint32_t *)(uintptr_t)at!=0xFFFFFFFFU){result=1;break;}
+ return result;
+}
+void Fbl_BoardReset(void) {
+ volatile uint32_t *box=(volatile uint32_t *)FBL_BOOT_MAILBOX;box[0]=0;__DSB();NVIC_SystemReset();
+}
+void Fbl_BoardJump(void) {
+ uint32_t sp,pc,i;
+ if(!Fbl_ApplicationValid())return;
+ sp=*(volatile uint32_t *)FBL_APP_START;pc=*(volatile uint32_t *)(FBL_APP_START+4U);
+ __disable_irq();SysTick->CTRL=0;SysTick->LOAD=0;SysTick->VAL=0;
+ for(i=0;i<8;++i){NVIC->ICER[i]=0xFFFFFFFFU;NVIC->ICPR[i]=0xFFFFFFFFU;}
+ SCB->ICSR=SCB_ICSR_PENDSTCLR_Msk|SCB_ICSR_PENDSVCLR_Msk;SCB->VTOR=FBL_APP_START;
+ __DSB();__ISB();
+ /* Naked tail uses no C stack after MSP replacement. APP Reset_Handler owns initialization. */
+ __asm volatile("msr msp, %0\n movs r0, #0\n msr control, r0\n isb\n cpsie i\n bx %1"::"r"(sp),"r"(pc):"r0","memory");
+ __builtin_unreachable();
+}
+int main(void) {
+ uint32_t lastTick;uint8_t stay=0;
+ volatile uint32_t *box=(volatile uint32_t *)FBL_BOOT_MAILBOX;
+ HAL_Init();SystemClock_Config();MX_GPIO_Init();
+ Can_Init();CanIf_Init();CanTp_Init();PduR_Init();Fbl_Init();
+ MX_SPI1_Init(); MX_USART1_UART_Init(); FBL_CanSpi_Initialize();
+ MX_NVIC_Init();
+ if(!(RCC->CSR&(RCC_CSR_PORRSTF|RCC_CSR_BORRSTF)) && box[0]==0x46424C31U && box[2]==~box[1]){stay=1;Fbl_SetInitialSession((uint8_t)box[1]);}
+ box[0]=0;RCC->CSR|=RCC_CSR_RMVF;
+ if(!stay && Fbl_ApplicationValid())Fbl_BoardJump();
+ lastTick=HAL_GetTick();
+ for(;;)if((uint32_t)(HAL_GetTick()-lastTick)>=5U){lastTick=HAL_GetTick();boardPoll();Fbl_MainFunction();}
+}
+void Error_Handler(void) { __disable_irq();for(;;){} }
 
-/**
-  * @brief System Clock Configuration
-  * @retval None
-  */
 void SystemClock_Config(void)
 {
   RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -524,11 +416,6 @@ void SystemClock_Config(void)
     Error_Handler();
   }
 }
-
-/**
-  * @brief NVIC Configuration.
-  * @retval None
-  */
 static void MX_NVIC_Init(void)
 {
   /* PVD_IRQn interrupt configuration */
@@ -550,8 +437,6 @@ static void MX_NVIC_Init(void)
   HAL_NVIC_SetPriority(FPU_IRQn, 0, 0);
   HAL_NVIC_EnableIRQ(FPU_IRQn);
 }
-
-/* USER CODE BEGIN 4 */
 void FBL_CanSpi_Sleep(void)
 {
 	FBL_CanSpi_MCP2515_BitModify(FBL_CANSPI_MCP2515_CANINTF, 0x40, 0x00);
@@ -577,8 +462,8 @@ uint8 FBL_CanSpi_Initialize(void)
 	FBL_RXM1reg.RXM1SIDL = 0x00;
 	FBL_RXM1reg.RXM1EID8 = 0x00;
 	FBL_RXM1reg.RXM1EID0 = 0x00;
-	FBL_RXF0reg.RXF0SIDH = (0x701 >> 3) & 0xFF;
-	FBL_RXF0reg.RXF0SIDL = (0x701 << 5) & 0xE0;
+	FBL_RXF0reg.RXF0SIDH = (0x710 >> 3) & 0xFF;
+	FBL_RXF0reg.RXF0SIDL = (0x710 << 5) & 0xE0;
 	FBL_RXF0reg.RXF0EID8 = 0x00;
 	FBL_RXF0reg.RXF0EID0 = 0x00;
 	FBL_RXF1reg.RXF1SIDH = 0x00;
@@ -869,16 +754,6 @@ void FBL_CanSpi_MCP2515_Reset(void)
 	FBL_CanSpi_SPI_Tx(FBL_CANSPI_MCP2515_RESET);
 	FBL_CANSPI_MCP2515_CS_HIGH();
 }
-uint8 FBL_CanSpi_MCP2515_ReadByte (uint8 address)
-{
-	static uint8 FBL_retVal = 0;
-	FBL_CANSPI_MCP2515_CS_LOW();
-	FBL_CanSpi_SPI_Tx(FBL_CANSPI_MCP2515_READ);
-	FBL_CanSpi_SPI_Tx(address);
-	FBL_retVal = FBL_CanSpi_SPI_Rx();
-	FBL_CANSPI_MCP2515_CS_HIGH();
-	return (FBL_retVal);
-}
 void FBL_CanSpi_MCP2515_ReadRxSequence(uint8 instruction, uint8 *data, uint8 length)
 {
 	FBL_CANSPI_MCP2515_CS_LOW();
@@ -964,728 +839,6 @@ void FBL_CanSpi_SPI_RxBuffer(uint8 *buffer, uint8 length)
 {
 	HAL_SPI_Receive(FBL_CANSPI_SPI_CAN, buffer, length, 3);
 }
-uint32 FBL_NvM_GetSector(uint32 Address)
-{
-	uint32 sector = 0;
-	if((Address < 0x08003FFF) && (Address >= 0x08000000)) sector = FLASH_SECTOR_0;
-	else if((Address < 0x08007FFF) && (Address >= 0x08004000)) sector = FLASH_SECTOR_1;
-	else if((Address < 0x0800BFFF) && (Address >= 0x08008000)) sector = FLASH_SECTOR_2;
-	else if((Address <= 0x0800FFFF) && (Address >= 0x0800C000)) sector = FLASH_SECTOR_3;
-	else if((Address <= 0x0801FFFF) && (Address >= 0x08010000)) sector = FLASH_SECTOR_4;
-	else if((Address < 0x0803FFFF) && (Address >= 0x08020000)) sector = FLASH_SECTOR_5;
-	else if((Address < 0x0805FFFF) && (Address >= 0x08040000)) sector = FLASH_SECTOR_6;
-	else if((Address < 0x0807FFFF) && (Address >= 0x08060000)) sector = FLASH_SECTOR_7;
-	else
-	{
-		/* Do nothing. */
-	}
-	return sector;
-}
-uint32 FBL_NvM_EraseFlash_CODING(void)
-{
-	FLASH_EraseInitTypeDef EraseInitStruct = {0};
-	uint32 SECTORError = 0;
-	uint32 StartSector = 0;
-	uint32 EndSector = 0;
-	StartSector = FLASH_SECTOR_3;
-	EndSector = FLASH_SECTOR_3;
-	HAL_FLASH_Unlock();
-	EraseInitStruct.TypeErase     = FLASH_TYPEERASE_SECTORS;
-	EraseInitStruct.VoltageRange  = FLASH_VOLTAGE_RANGE_3;
-	EraseInitStruct.Sector        = StartSector;
-	EraseInitStruct.NbSectors     = (EndSector - StartSector) + 1;
-	if (HAL_FLASHEx_Erase(&EraseInitStruct, &SECTORError) != HAL_OK) return HAL_FLASH_GetError();
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-uint32 FBL_NvM_EraseFlash_CALIBRATION(void)
-{
-	FLASH_EraseInitTypeDef EraseInitStruct = {0};
-	uint32 SECTORError = 0;
-	uint32 StartSector = 0;
-	uint32 EndSector = 0;
-	StartSector = FLASH_SECTOR_2;
-	EndSector = FLASH_SECTOR_2;
-	HAL_FLASH_Unlock();
-	EraseInitStruct.TypeErase     = FLASH_TYPEERASE_SECTORS;
-	EraseInitStruct.VoltageRange  = FLASH_VOLTAGE_RANGE_3;
-	EraseInitStruct.Sector        = StartSector;
-	EraseInitStruct.NbSectors     = (EndSector - StartSector) + 1;
-	if (HAL_FLASHEx_Erase(&EraseInitStruct, &SECTORError) != HAL_OK) return HAL_FLASH_GetError();
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-uint32 FBL_NvM_EraseFlash_APPL(void)
-{
-	FLASH_EraseInitTypeDef EraseInitStruct = {0};
-	uint32 SECTORError = 0;
-	uint32 StartSector = 0;
-	uint32 EndSector = 0;
-	StartSector = FLASH_SECTOR_7;
-	EndSector = FLASH_SECTOR_7;
-	HAL_FLASH_Unlock();
-	EraseInitStruct.TypeErase     = FLASH_TYPEERASE_SECTORS;
-	EraseInitStruct.VoltageRange  = FLASH_VOLTAGE_RANGE_3;
-	EraseInitStruct.Sector        = StartSector;
-	EraseInitStruct.NbSectors     = (EndSector - StartSector) + 1;
-	if (HAL_FLASHEx_Erase(&EraseInitStruct, &SECTORError) != HAL_OK) return HAL_FLASH_GetError();
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-uint32 FBL_NvM_FlashWriteData(uint32 StartSectorAddress, uint32 *Data, uint16 numberofwords)
-{
-	uint32 sofar = 0;
-	HAL_FLASH_Unlock();
-	while (sofar < numberofwords)
-	{
-		if (HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, StartSectorAddress, Data[sofar]) == HAL_OK)
-		{
-			StartSectorAddress += 4;
-			sofar++;
-		}
-		else return HAL_FLASH_GetError ();
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-void FBL_NvM_FlashReadData(uint32 StartSectorAddress, uint32 *RxBuf, uint16 numberofwords)
-{
-	for (uint16_t i = 0; i < numberofwords; i++) RxBuf[i] = *(__IO uint32_t *)(StartSectorAddress + (i * 4));
-}
-void FBL_DiagRoutine_DSC_RequestDownload(void)
-{
-	FBL_TxFrame.frame.dlc = 8;
-	FBL_TxFrame.frame.id = 0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x05;
-	FBL_TxFrame.frame.data1 = 0x74;
-	FBL_TxFrame.frame.data2 = 0x20;
-	FBL_TxFrame.frame.data3 = 0x02;
-	FBL_TxFrame.frame.data4 = 0x02;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-}
-void FBL_DiagRoutine_DSC_TransferData(void)
-{
-	if(FBL_DSC_State == PROGRAMMING)
-	{
-		FBL_ProgrammingData = (FBL_RxFrame.frame.data6 << 24) | (FBL_RxFrame.frame.data5 << 16) | (FBL_RxFrame.frame.data4 << 8) | FBL_RxFrame.frame.data3;
-		__disable_irq();
-		FBL_NvM_FlashWriteData(FBL_ProgrammingAddress, &FBL_ProgrammingData, 1);
-		__enable_irq();
-		FBL_ProgrammingAddress += 4;
-		FBL_ProgrammingIndex += 1;
-		FBL_TxFrame.frame.dlc = 3;
-		FBL_TxFrame.frame.id = 0x701;
-		FBL_TxFrame.frame.idType = 1;
-		FBL_TxFrame.frame.data0 = 0x02;
-		FBL_TxFrame.frame.data1 = 0x76;
-		FBL_TxFrame.frame.data2 = 0x01;
-		FBL_CanSpi_Transmit(&FBL_TxFrame);
-	}
-	else if(FBL_DSC_State == CODING)
-	{
-		FBL_ProgrammingData = (FBL_RxFrame.frame.data6 << 0) | (FBL_RxFrame.frame.data5 << 8) | (FBL_RxFrame.frame.data4 << 16) | (FBL_RxFrame.frame.data3 << 24);
-		__disable_irq();
-		FBL_NvM_FlashWriteData(FBL_ProgrammingAddress, &FBL_ProgrammingData, 1);
-		__enable_irq();
-		FBL_ProgrammingAddress += 4;
-		FBL_ProgrammingIndex += 1;
-		FBL_TxFrame.frame.dlc = 3;
-		FBL_TxFrame.frame.id = 0x701;
-		FBL_TxFrame.frame.idType = 1;
-		FBL_TxFrame.frame.data0 = 0x02;
-		FBL_TxFrame.frame.data1 = 0x76;
-		FBL_TxFrame.frame.data2 = 0x01;
-		FBL_CanSpi_Transmit(&FBL_TxFrame);
-	}
-	else if(FBL_DSC_State == CALIBRATION)
-	{
-		FBL_ProgrammingData = (FBL_RxFrame.frame.data6 << 0) | (FBL_RxFrame.frame.data5 << 8) | (FBL_RxFrame.frame.data4 << 16) | (FBL_RxFrame.frame.data3 << 24);
-		__disable_irq();
-		FBL_NvM_FlashWriteData(FBL_ProgrammingAddress, &FBL_ProgrammingData, 1);
-		__enable_irq();
-		FBL_ProgrammingAddress += 4;
-		FBL_ProgrammingIndex += 1;
-		FBL_TxFrame.frame.dlc = 3;
-		FBL_TxFrame.frame.id = 0x701;
-		FBL_TxFrame.frame.idType = 1;
-		FBL_TxFrame.frame.data0 = 0x02;
-		FBL_TxFrame.frame.data1 = 0x76;
-		FBL_TxFrame.frame.data2 = 0x01;
-		FBL_CanSpi_Transmit(&FBL_TxFrame);
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-}
-void FBL_DiagRoutine_DSC_RequestTransferExit(void)
-{
-	FBL_TxFrame.frame.dlc = 2;
-	FBL_TxFrame.frame.id = 0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x01;
-	FBL_TxFrame.frame.data1 = 0x77;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-}
-void FBL_DiagRoutine_RAR_MassEraseCODING(void)
-{
-	__disable_irq();
-	FBL_TxFrame.frame.dlc = 5;
-	FBL_TxFrame.frame.id = 0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x04;
-	FBL_TxFrame.frame.data1 = 0x71;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0x03;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_NvM_EraseFlash_CODING();
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-	__enable_irq();
-}
-void FBL_DiagRoutine_RAR_MassEraseCALIBRATION(void)
-{
-	__disable_irq();
-	FBL_TxFrame.frame.dlc = 5;
-	FBL_TxFrame.frame.id = 0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x04;
-	FBL_TxFrame.frame.data1 = 0x71;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0x02;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_NvM_EraseFlash_CALIBRATION();
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-	__enable_irq();
-}
-void FBL_DiagRoutine_RAR_MassEraseAPPL(void)
-{
-	__disable_irq();
-	FBL_TxFrame.frame.dlc = 5;
-	FBL_TxFrame.frame.id = 0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x04;
-	FBL_TxFrame.frame.data1 = 0x71;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_NvM_EraseFlash_APPL();
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-	__enable_irq();
-}
-void FBL_JumpToAppl(void)
-{
-	typedef void (*pFunction)(void);
-	static uint32 app_address = 0x08060000;
-	static pFunction app_entry;
-	uint32 msp_value = *((uint32*)app_address);
-	__disable_irq();
-	SCB->VTOR = app_address;
-	__set_MSP(msp_value);
-	app_entry = (pFunction)(*((uint32*)(app_address + 4)));
-	app_entry();
-}
-void FBL_DiagRoutine_ER_SoftReset(void)
-{
-	__disable_irq();
-	*FBL_DSC_Pointer = 0;
-	__NVIC_SystemReset();
-}
-void FBL_DiagRoutine_ER_HardReset(void)
-{
-	__disable_irq();
-	*FBL_DSC_Pointer = 0;
-	for(uint32* addr = ((uint32_t*)0x2001FDA8); addr <= ((uint32_t*)0x2001FFFF); addr++) *addr = 0;
-	__NVIC_SystemReset();
-}
-void FBL_DiagRoutine_DSC_Coding(void)
-{
-	if(FBL_CanSpi_Receive(&FBL_RxFrame) != 0)
-	{
-		if(FBL_RxFrame.frame.id == 0x700)
-		{
-			if(FBL_RxFrame.frame.data1 == 0x22 && FBL_RxFrame.frame.data2 == 0xF1 && FBL_RxFrame.frame.data3 == 0x86) FBL_DiagRoutine_RDBI_ReadActiveDiagnosticSession();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data0 == 0x04 && FBL_RxFrame.frame.data1 == 0x31 && FBL_RxFrame.frame.data4 == 0x03) FBL_DiagRoutine_RAR_MassEraseCODING();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x34)
-			{
-				if(FBL_ProgrammingAddress == 0) FBL_ProgrammingAddress = 0x0800C000;
-				else
-				{
-					/* Do nothing. */
-				}
-				FBL_DiagRoutine_DSC_RequestDownload();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x36) FBL_DiagRoutine_DSC_TransferData();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x05)
-			{
-				FBL_DSC_State = CALIBRATION;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x05;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x02)
-			{
-				FBL_DSC_State = PROGRAMMING;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x02;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x37 && FBL_RxFrame.frame.data0 == 0x01) FBL_DiagRoutine_DSC_RequestTransferExit();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x11 && FBL_RxFrame.frame.data2 == 0x01 && FBL_RxFrame.frame.data0 == 0x02)
-			{
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x51;
-				FBL_TxFrame.frame.data2 = 0x01;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_ER_HardReset();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		FBL_RxFrame.frame.dlc = 0;
-		FBL_RxFrame.frame.id = 0;
-		FBL_RxFrame.frame.idType = 0;
-		FBL_RxFrame.frame.data0 = 0;
-		FBL_RxFrame.frame.data1 = 0;
-		FBL_RxFrame.frame.data2 = 0;
-		FBL_RxFrame.frame.data3 = 0;
-		FBL_RxFrame.frame.data4 = 0;
-		FBL_RxFrame.frame.data5 = 0;
-		FBL_RxFrame.frame.data6 = 0;
-		FBL_RxFrame.frame.data7 = 0;
-	}
-}
-void FBL_DiagRoutine_DSC_Calibration(void)
-{
-	if(FBL_CanSpi_Receive(&FBL_RxFrame) != 0)
-	{
-		if(FBL_RxFrame.frame.id == 0x700)
-		{
-			if(FBL_RxFrame.frame.data1 == 0x22 && FBL_RxFrame.frame.data2 == 0xF1 && FBL_RxFrame.frame.data3 == 0x86) FBL_DiagRoutine_RDBI_ReadActiveDiagnosticSession();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data0 == 0x04 && FBL_RxFrame.frame.data1 == 0x31 && FBL_RxFrame.frame.data4 == 0x02) FBL_DiagRoutine_RAR_MassEraseCALIBRATION();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x34)
-			{
-				if(FBL_ProgrammingAddress == 0) FBL_ProgrammingAddress = 0x08008000;
-				else
-				{
-					/* Do nothing. */
-				}
-				FBL_DiagRoutine_DSC_RequestDownload();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x36) FBL_DiagRoutine_DSC_TransferData();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x37 && FBL_RxFrame.frame.data0 == 0x01) 	FBL_DiagRoutine_DSC_RequestTransferExit();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x04)
-			{
-				FBL_DSC_State = CODING;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x04;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x02)
-			{
-				FBL_DSC_State = PROGRAMMING;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x02;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x11 && FBL_RxFrame.frame.data2 == 0x01 && FBL_RxFrame.frame.data0 == 0x02)
-			{
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x51;
-				FBL_TxFrame.frame.data2 = 0x01;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_ER_HardReset();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		FBL_RxFrame.frame.dlc = 0;
-		FBL_RxFrame.frame.id = 0;
-		FBL_RxFrame.frame.idType = 0;
-		FBL_RxFrame.frame.data0 = 0;
-		FBL_RxFrame.frame.data1 = 0;
-		FBL_RxFrame.frame.data2 = 0;
-		FBL_RxFrame.frame.data3 = 0;
-		FBL_RxFrame.frame.data4 = 0;
-		FBL_RxFrame.frame.data5 = 0;
-		FBL_RxFrame.frame.data6 = 0;
-		FBL_RxFrame.frame.data7 = 0;
-	}
-}
-void FBL_DiagRoutine_RDBI_ReadActiveDiagnosticSession(void)
-{
-	FBL_TxFrame.frame.dlc = 5;
-	FBL_TxFrame.frame.id =0x701;
-	FBL_TxFrame.frame.idType = 1;
-	FBL_TxFrame.frame.data0 = 0x04;
-	FBL_TxFrame.frame.data1 = 0x62;
-	FBL_TxFrame.frame.data2 = 0xF1;
-	FBL_TxFrame.frame.data3 = 0x86;
-	FBL_TxFrame.frame.data4 = FBL_DSC_State;
-	FBL_CanSpi_Transmit(&FBL_TxFrame);
-	FBL_TxFrame.frame.idType = 0;
-	FBL_TxFrame.frame.id = 0;
-	FBL_TxFrame.frame.dlc = 0;
-	FBL_TxFrame.frame.data0 = 0;
-	FBL_TxFrame.frame.data1 = 0;
-	FBL_TxFrame.frame.data2 = 0;
-	FBL_TxFrame.frame.data3 = 0;
-	FBL_TxFrame.frame.data4 = 0;
-	FBL_TxFrame.frame.data5 = 0;
-	FBL_TxFrame.frame.data6 = 0;
-	FBL_TxFrame.frame.data7 = 0;
-}
-void FBL_DiagRoutine_DSC_Programming(void)
-{
-	if(FBL_CanSpi_Receive(&FBL_RxFrame) != 0)
-	{
-		if(FBL_RxFrame.frame.id == 0x700)
-		{
-			if(FBL_RxFrame.frame.data1 == 0x22 && FBL_RxFrame.frame.data2 == 0xF1 && FBL_RxFrame.frame.data3 == 0x86) FBL_DiagRoutine_RDBI_ReadActiveDiagnosticSession();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data0 == 0x04 && FBL_RxFrame.frame.data1 == 0x31 && FBL_RxFrame.frame.data4 == 0x00) FBL_DiagRoutine_RAR_MassEraseAPPL();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x34)
-			{
-				FBL_ProgrammingAddress = (0x08 << 24)
-						| (FBL_RxFrame.frame.data4 << 16)
-						| (FBL_RxFrame.frame.data5 << 8)
-						| (FBL_RxFrame.frame.data6);
-				FBL_DiagRoutine_DSC_RequestDownload();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x36) FBL_DiagRoutine_DSC_TransferData();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x37 && FBL_RxFrame.frame.data0 == 0x01) FBL_DiagRoutine_DSC_RequestTransferExit();
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x04)
-			{
-				FBL_DSC_State = CODING;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x04;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x10 && FBL_RxFrame.frame.data2 == 0x05)
-			{
-				FBL_DSC_State = CALIBRATION;
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id =0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x50;
-				FBL_TxFrame.frame.data2 = 0x05;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_DSC_Calibration();
-				FBL_TxFrame.frame.dlc = 0;
-				FBL_TxFrame.frame.id = 0;
-				FBL_TxFrame.frame.idType = 0;
-				FBL_TxFrame.frame.data0 = 0;
-				FBL_TxFrame.frame.data1 = 0;
-				FBL_TxFrame.frame.data2 = 0;
-				FBL_TxFrame.frame.data3 = 0;
-				FBL_TxFrame.frame.data4 = 0;
-				FBL_TxFrame.frame.data5 = 0;
-				FBL_TxFrame.frame.data6 = 0;
-				FBL_TxFrame.frame.data7 = 0;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-			if(FBL_RxFrame.frame.data1 == 0x11 && FBL_RxFrame.frame.data2 == 0x01 && FBL_RxFrame.frame.data0 == 0x02)
-			{
-				FBL_TxFrame.frame.dlc = 3;
-				FBL_TxFrame.frame.id = 0x701;
-				FBL_TxFrame.frame.idType = 1;
-				FBL_TxFrame.frame.data0 = 0x02;
-				FBL_TxFrame.frame.data1 = 0x51;
-				FBL_TxFrame.frame.data2 = 0x01;
-				FBL_CanSpi_Transmit(&FBL_TxFrame);
-				FBL_DiagRoutine_ER_HardReset();
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		FBL_RxFrame.frame.dlc = 0;
-		FBL_RxFrame.frame.id = 0;
-		FBL_RxFrame.frame.idType = 0;
-		FBL_RxFrame.frame.data0 = 0;
-		FBL_RxFrame.frame.data1 = 0;
-		FBL_RxFrame.frame.data2 = 0;
-		FBL_RxFrame.frame.data3 = 0;
-		FBL_RxFrame.frame.data4 = 0;
-		FBL_RxFrame.frame.data5 = 0;
-		FBL_RxFrame.frame.data6 = 0;
-		FBL_RxFrame.frame.data7 = 0;
-	}
-}
-/* USER CODE END 4 */
-
-/**
-  * @brief  Period elapsed callback in non blocking mode
-  * @note   This function is called  when TIM5 interrupt took place, inside
-  * HAL_TIM_IRQHandler(). It makes a direct call to HAL_IncTick() to increment
-  * a global variable "uwTick" used as application time base.
-  * @param  htim : TIM handle
-  * @retval None
-  */
 void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
 {
   /* USER CODE BEGIN Callback 0 */
@@ -1698,29 +851,13 @@ void HAL_TIM_PeriodElapsedCallback(TIM_HandleTypeDef *htim)
   /* USER CODE END Callback 1 */
 }
 
-/**
-  * @brief  This function is executed in case of error occurrence.
-  * @retval None
-  */
-void Error_Handler(void)
+uint8 FBL_CanSpi_MCP2515_ReadByte (uint8 address)
 {
-  /* USER CODE BEGIN Error_Handler_Debug */
-	(*FBL_ResetCounterFBL)++;
-	__NVIC_SystemReset();
-  /* USER CODE END Error_Handler_Debug */
+	static uint8 FBL_retVal = 0;
+	FBL_CANSPI_MCP2515_CS_LOW();
+	FBL_CanSpi_SPI_Tx(FBL_CANSPI_MCP2515_READ);
+	FBL_CanSpi_SPI_Tx(address);
+	FBL_retVal = FBL_CanSpi_SPI_Rx();
+	FBL_CANSPI_MCP2515_CS_HIGH();
+	return (FBL_retVal);
 }
-
-#ifdef  USE_FULL_ASSERT
-/**
-  * @brief  Reports the name of the source file and the source line number
-  *         where the assert_param error has occurred.
-  * @param  file: pointer to the source file name
-  * @param  line: assert_param error line source number
-  * @retval None
-  */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-  /* USER CODE BEGIN 6 */
-  /* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */

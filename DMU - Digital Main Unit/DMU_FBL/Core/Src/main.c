@@ -1,272 +1,97 @@
-/* USER CODE BEGIN Header */
-/* USER CODE END Header */
-/* Includes ------------------------------------------------------------------*/
 #include "main.h"
-#include "can.h"
 #include "gpio.h"
-
-/* Private includes ----------------------------------------------------------*/
-/* USER CODE BEGIN Includes */
+#include "Fbl.h"
+#include "../../BSW/Com/Can/Can.h"
+#include "../../BSW/Com/CanIf/CanIf.h"
+#include "../../BSW/Com/CanTp/CanTp.h"
+#include "../../BSW/Com/PduR/PduR.h"
 #include <string.h>
 #include <stdbool.h>
-/* USER CODE END Includes */
-
-/* Private typedef -----------------------------------------------------------*/
-/* USER CODE BEGIN PTD */
-typedef uint8_t uint8;
-typedef uint16_t uint16;
-typedef uint32_t uint32;
-typedef enum
-{
-	DEFAULT = 0U,
-	EXTENDED = 1U,
-	PROGRAMMING = 2U,
-	HARDRESET = 5U,
-	SOFTRESET = 6U,
-	JUMPTOAPPL = 7U
-}FBL_DSC_t;
-/* USER CODE END PTD */
-
-/* Private define ------------------------------------------------------------*/
-/* USER CODE BEGIN PD */
-#define SESSIONSTATUS_ADDR 					0x1000fc00
-#define NCR_START_ADDRESS 					0x1000f000
-#define NCR_END_ADDRESS   					0x1000fffe
-#define NCR_SIZE          					(NCR_END_ADDRESS - NCR_START_ADDRESS + 1)
-#define APPL_START_ADDRESS 					0x08020000
-#define RESET_COUNTER_ADDRESS				0x1000fc70
-/* USER CODE END PD */
-
-/* Private macro -------------------------------------------------------------*/
-/* USER CODE BEGIN PM */
-/* USER CODE END PM */
-
-/* Private variables ---------------------------------------------------------*/
-
-/* USER CODE BEGIN PV */
-uint8 FBL_RxFrame[8] = {0};
-uint8 FBL_TxFrame[8] = {0};
-CAN_RxHeaderTypeDef FBL_RxHeader = {0, 0, 0, 0, 0, 0, 0};
-CAN_TxHeaderTypeDef FBL_TxHeader = {0, 0, 0, 0, 0, 0};
-uint32 FBL_TxMailbox = 0;
-uint32* FBL_DSC_Pointer = (uint32*)(SESSIONSTATUS_ADDR);
-FBL_DSC_t FBL_DSC_State = JUMPTOAPPL;
-uint32* FBL_ResetCounterFBL = (uint32*)(RESET_COUNTER_ADDRESS);
-uint32 FBL_ProgrammingData = 0;
-uint32 FBL_ProgrammingIndex = 0;
-uint32 FBL_ProgrammingAddress = 0;
-uint32 ROM_APPL_START_ADDR_storedValue = 0;
-uint32 ROM_APPL_START_ADDR = 0x08020000;
-uint32 FBL_DSC_Status = 0;
-/* USER CODE END PV */
-
-/* Private function prototypes -----------------------------------------------*/
 void SystemClock_Config(void);
 static void MX_NVIC_Init(void);
-/* USER CODE BEGIN PFP */
-void FBL_JumpToAppl(void);
-void FBL_DiagService_ER_SoftReset(void);
-void FBL_DiagService_ER_HardReset(void);
-void FBL_DiagService_DSC_Programming(void);
-void FBL_DiagService_DSC_RequestDownload(void);
-void FBL_DiagService_DSC_TransferData(void);
-void FBL_DiagService_DSC_RequestTransferExit(void);
-void FBL_DiagService_RAR_MassEraseAPPL(void);
-void FBL_DiagService_RDBI_ReadActiveDiagnosticSession(void);
-void FBL_NvM_FlashReadData(uint32 StartSectorAddress, uint32 *RxBuf, uint16 numberofwords);
-uint32 FBL_NvM_FlashWriteData(uint32 StartSectorAddress, uint32 *Data, uint16 numberofwords);
-uint32 FBL_NvM_EraseFlash_APPL(void);
-uint32 FBL_NvM_GetSector(uint32 Address);
-/* USER CODE END PFP */
-
-/* Private user code ---------------------------------------------------------*/
-/* USER CODE BEGIN 0 */
-void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &FBL_RxHeader, FBL_RxFrame);
-	switch(FBL_DSC_State)
-	{
-	case PROGRAMMING:
-		FBL_DiagService_DSC_Programming();
-		break;
-	case HARDRESET:
-		FBL_DiagService_ER_HardReset();
-		break;
-	case SOFTRESET:
-		FBL_DiagService_ER_SoftReset();
-		break;
-	default:
-		if(FBL_RxFrame[1] == 0x50 && FBL_RxFrame[2] == 0x02)
-		{
-			FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-			FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-			FBL_TxFrame[0] = FBL_RxFrame[0];
-			FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-			FBL_TxFrame[2] = FBL_RxFrame[2];
-			FBL_DSC_State = PROGRAMMING;
-			HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-			FBL_DiagService_DSC_Programming();
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		break;
-	}
+uint32_t *FBL_ResetCounterFBL=(uint32_t *)(FBL_BOOT_MAILBOX+12U);
+static uint8_t txHardwarePending;
+static uint16_t txHardwareAge;
+#include "can.h"
+static uint32_t txMailbox;
+int Fbl_BoardCanTransmit(const uint8_t *p) {
+ CAN_TxHeaderTypeDef h={0};uint32_t irq=__get_PRIMASK();
+ if(txHardwarePending)return 1;
+ h.StdId=0x710;h.IDE=CAN_ID_STD;h.RTR=CAN_RTR_DATA;h.DLC=8;
+ __disable_irq();
+ if(HAL_CAN_AddTxMessage(&hcan1,&h,(uint8_t *)p,&txMailbox)!=HAL_OK) {if(!irq)__enable_irq();return 1;}
+ txHardwarePending=1;txHardwareAge=0;if(!irq)__enable_irq();return 0;
 }
-void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *hcan)
-{
-	HAL_CAN_GetRxMessage(&hcan1, CAN_RX_FIFO0, &FBL_RxHeader, FBL_RxFrame);
-	switch(FBL_DSC_State)
-	{
-	case PROGRAMMING:
-		FBL_DiagService_DSC_Programming();
-		break;
-	case HARDRESET:
-		FBL_DiagService_ER_HardReset();
-		break;
-	case SOFTRESET:
-		FBL_DiagService_ER_SoftReset();
-		break;
-	default:
-		if(FBL_RxFrame[1] == 0x10 && FBL_RxFrame[2] == 0x02)
-		{
-			FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-			FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-			FBL_TxFrame[0] = FBL_RxFrame[0];
-			FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-			FBL_TxFrame[2] = FBL_RxFrame[2];
-			FBL_DSC_State = PROGRAMMING;
-			HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-			FBL_DiagService_DSC_Programming();
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-		break;
-	}
+static void txDone(uint32_t box,uint8_t ok) { if(txHardwarePending && txMailbox==box) {txHardwarePending=0;Can_TxConfirmation(ok);} }
+void HAL_CAN_TxMailbox0CompleteCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX0,1);}
+void HAL_CAN_TxMailbox1CompleteCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX1,1);}
+void HAL_CAN_TxMailbox2CompleteCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX2,1);}
+void HAL_CAN_TxMailbox0AbortCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX0,0);}
+void HAL_CAN_TxMailbox1AbortCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX1,0);}
+void HAL_CAN_TxMailbox2AbortCallback(CAN_HandleTypeDef *h) {if(h==&hcan1)txDone(CAN_TX_MAILBOX2,0);}
+void HAL_CAN_ErrorCallback(CAN_HandleTypeDef *h) {if(h==&hcan1) {txHardwarePending=0;Can_BusOff();}}
+void HAL_CAN_RxFifo0MsgPendingCallback(CAN_HandleTypeDef *h) {
+ CAN_RxHeaderTypeDef header;Can_FrameType f;
+ if(h!=&hcan1 || HAL_CAN_GetRxMessage(h,CAN_RX_FIFO0,&header,f.data)!=HAL_OK || header.IDE!=CAN_ID_STD ||
+  header.RTR!=CAN_RTR_DATA || header.StdId!=0x710 || header.DLC>8)return;
+ f.id=0x710;f.dlc=(uint8_t)header.DLC;Can_RxIndication(&f);
 }
-/* USER CODE END 0 */
-
-/**
- * @brief  The application entry point.
- * @retval int
- */
-int main(void)
-{
-
-	/* USER CODE BEGIN 1 */
-	/* USER CODE END 1 */
-
-	/* MCU Configuration--------------------------------------------------------*/
-
-	/* Reset of all peripherals, Initializes the Flash interface and the Systick. */
-	HAL_Init();
-
-	/* USER CODE BEGIN Init */
-	/* USER CODE END Init */
-
-	/* Configure the system clock */
-	SystemClock_Config();
-
-	/* USER CODE BEGIN SysInit */
-	/* USER CODE END SysInit */
-
-	/* Initialize all configured peripherals */
-	MX_GPIO_Init();
-	MX_CAN1_Init();
-
-	/* Initialize interrupts */
-	MX_NVIC_Init();
-	/* USER CODE BEGIN 2 */
-
-	if((RCC->CSR & RCC_CSR_PORRSTF) != 0)
-	{
-		for(uint32* addr = ((uint32*)NCR_START_ADDRESS); addr <= ((uint32*)NCR_END_ADDRESS); addr++) *addr = 0;
-		/* Reset the flag. */
-		RCC->CSR |= RCC_CSR_PORRSTF;
-		RCC->CSR |= RCC_CSR_RMVF;
-	}/* Check if brown-out reset wake-up event occurred.*/
-	else if((RCC->CSR & RCC_CSR_BORRSTF) != 0)
-	{
-		for(uint32* addr = ((uint32*)NCR_START_ADDRESS); addr <= ((uint32*)NCR_END_ADDRESS); addr++) *addr = 0;
-		/* Reset the flag. */
-		RCC->CSR |= RCC_CSR_BORRSTF;
-		RCC->CSR |= RCC_CSR_RMVF;
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-
-	if(*FBL_ResetCounterFBL == 50)
-	{
-		FBL_DSC_Status = PROGRAMMING;
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-
-	FBL_ProgrammingAddress = 0;
-	FBL_ProgrammingIndex = 0;
-
-	if(*FBL_ResetCounterFBL == 50)
-	{
-		FBL_DSC_Status = PROGRAMMING;
-	}
-	else
-	{
-		FBL_NvM_FlashReadData(ROM_APPL_START_ADDR, &ROM_APPL_START_ADDR_storedValue, 1);
-
-		if(ROM_APPL_START_ADDR_storedValue != 0xFFFFFFFF)
-		{
-			FBL_DSC_Pointer = (uint32*)(SESSIONSTATUS_ADDR);
-			FBL_DSC_Status = *FBL_DSC_Pointer;
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-
-	if((FBL_DSC_Status == PROGRAMMING) || (FBL_DSC_Status == SOFTRESET) || (FBL_DSC_Status == HARDRESET))
-	{
-		FBL_DSC_State = FBL_DSC_Status;
-		if(FBL_DSC_Status == SOFTRESET) FBL_DiagService_ER_SoftReset();
-		else if(FBL_DSC_Status == HARDRESET) FBL_DiagService_ER_HardReset();
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	else
-	{
-		if(ROM_APPL_START_ADDR_storedValue != 0xFFFFFFFF)
-		{
-			FBL_JumpToAppl();
-		}
-		else
-		{
-			/* Do nothing. */
-		}
-	}
-	/* USER CODE END 2 */
-
-	/* Infinite loop */
-	/* USER CODE BEGIN WHILE */
-	while (1){}
-	/* USER CODE END WHILE */
-
-	/* USER CODE BEGIN 3 */
-	/* USER CODE END 3 */
+void HAL_CAN_RxFifo0FullCallback(CAN_HandleTypeDef *h) {HAL_CAN_RxFifo0MsgPendingCallback(h);}
+static void boardPoll(void) {
+ if(txHardwarePending && ++txHardwareAge>=200) {HAL_CAN_AbortTxRequest(&hcan1,txMailbox);txHardwarePending=0;Can_TxConfirmation(0);}
 }
+int Fbl_BoardRead(uint32_t a,void *p,uint32_t n) {
+ if(!p || a<FBL_APP_START || a>=FBL_APP_END || n>FBL_APP_END-a) return 1;
+ memcpy(p,(const void *)(uintptr_t)a,n);return 0;
+}
+int Fbl_BoardProgram(uint32_t a,const void *p,uint32_t n) {
+ const uint8_t *src=p;uint32_t i;int error=0;
+ if(!p || !n || a<FBL_APP_START || a>=FBL_APP_END || n>FBL_APP_END-a) return 1;
+ if(HAL_FLASH_Unlock()!=HAL_OK){(void)HAL_FLASH_Lock();return 1;}
+ for(i=0;i<n;++i) {
+  if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_BYTE,a+i,src[i])!=HAL_OK || *(volatile uint8_t *)(uintptr_t)(a+i)!=src[i]) {error=1;break;}
+ }
+ if(HAL_FLASH_Lock()!=HAL_OK)error=1;return error;
+}
+int Fbl_BoardErase(void) {
+ FLASH_EraseInitTypeDef e={0};uint32_t error=0,at;int result=0;
+ e.TypeErase=FLASH_TYPEERASE_SECTORS;e.VoltageRange=FLASH_VOLTAGE_RANGE_3;e.Sector=5U;e.NbSectors=2U;
+ if(HAL_FLASH_Unlock()!=HAL_OK){(void)HAL_FLASH_Lock();return 1;}
+ if(HAL_FLASHEx_Erase(&e,&error)!=HAL_OK || error!=0xFFFFFFFFU)result=1;
+ if(HAL_FLASH_Lock()!=HAL_OK)result=1;
+ if(!result)for(at=FBL_APP_START;at<FBL_APP_END;at+=4)if(*(volatile uint32_t *)(uintptr_t)at!=0xFFFFFFFFU){result=1;break;}
+ return result;
+}
+void Fbl_BoardReset(void) {
+ volatile uint32_t *box=(volatile uint32_t *)FBL_BOOT_MAILBOX;box[0]=0;__DSB();NVIC_SystemReset();
+}
+void Fbl_BoardJump(void) {
+ uint32_t sp,pc,i;
+ if(!Fbl_ApplicationValid())return;
+ sp=*(volatile uint32_t *)FBL_APP_START;pc=*(volatile uint32_t *)(FBL_APP_START+4U);
+ __disable_irq();SysTick->CTRL=0;SysTick->LOAD=0;SysTick->VAL=0;
+ for(i=0;i<8;++i){NVIC->ICER[i]=0xFFFFFFFFU;NVIC->ICPR[i]=0xFFFFFFFFU;}
+ SCB->ICSR=SCB_ICSR_PENDSTCLR_Msk|SCB_ICSR_PENDSVCLR_Msk;SCB->VTOR=FBL_APP_START;
+ __DSB();__ISB();
+ /* Naked tail uses no C stack after MSP replacement. APP Reset_Handler owns initialization. */
+ __asm volatile("msr msp, %0\n movs r0, #0\n msr control, r0\n isb\n cpsie i\n bx %1"::"r"(sp),"r"(pc):"r0","memory");
+ __builtin_unreachable();
+}
+int main(void) {
+ uint32_t lastTick;uint8_t stay=0;
+ volatile uint32_t *box=(volatile uint32_t *)FBL_BOOT_MAILBOX;
+ HAL_Init();SystemClock_Config();MX_GPIO_Init();
+ Can_Init();CanIf_Init();CanTp_Init();PduR_Init();Fbl_Init();
+ MX_CAN1_Init();
+ MX_NVIC_Init();
+ if(!(RCC->CSR&(RCC_CSR_PORRSTF|RCC_CSR_BORRSTF)) && box[0]==0x46424C31U && box[2]==~box[1]){stay=1;Fbl_SetInitialSession((uint8_t)box[1]);}
+ box[0]=0;RCC->CSR|=RCC_CSR_RMVF;
+ if(!stay && Fbl_ApplicationValid())Fbl_BoardJump();
+ lastTick=HAL_GetTick();
+ for(;;)if((uint32_t)(HAL_GetTick()-lastTick)>=5U){lastTick=HAL_GetTick();boardPoll();Fbl_MainFunction();}
+}
+void Error_Handler(void) { __disable_irq();for(;;){} }
 
-/**
- * @brief System Clock Configuration
- * @retval None
- */
 void SystemClock_Config(void)
 {
 	RCC_OscInitTypeDef RCC_OscInitStruct = {0};
@@ -307,11 +132,6 @@ void SystemClock_Config(void)
 		Error_Handler();
 	}
 }
-
-/**
- * @brief NVIC Configuration.
- * @retval None
- */
 static void MX_NVIC_Init(void)
 {
 	/* PVD_IRQn interrupt configuration */
@@ -333,262 +153,3 @@ static void MX_NVIC_Init(void)
 	HAL_NVIC_SetPriority(RCC_IRQn, 5, 0);
 	HAL_NVIC_EnableIRQ(RCC_IRQn);
 }
-
-/* USER CODE BEGIN 4 */
-uint32 FBL_NvM_GetSector(uint32 Address)
-{
-	uint32 sector = 0;
-	if((Address < 0x08003FFF) && (Address >= 0x08000000)) sector = FLASH_SECTOR_0;
-	else if((Address < 0x08007FFF) && (Address >= 0x08004000)) sector = FLASH_SECTOR_1;
-	else if((Address < 0x0800BFFF) && (Address >= 0x08008000)) sector = FLASH_SECTOR_2;
-	else if((Address <= 0x0800FFFF) && (Address >= 0x0800C000)) sector = FLASH_SECTOR_3;
-	else if((Address <= 0x0801FFFF) && (Address >= 0x08010000)) sector = FLASH_SECTOR_4;
-	else if((Address < 0x0803FFFF) && (Address >= 0x08020000)) sector = FLASH_SECTOR_5;
-	else if((Address < 0x0805FFFF) && (Address >= 0x08040000)) sector = FLASH_SECTOR_6;
-	else if((Address < 0x0807FFFF) && (Address >= 0x08060000)) sector = FLASH_SECTOR_7;
-	else
-	{
-		/* Do nothing. */
-	}
-	return sector;
-}
-uint32 FBL_NvM_EraseFlash_APPL(void)
-{
-	FLASH_EraseInitTypeDef EraseInitStruct = {0};
-	uint32 SECTORError = 0;
-	uint32 StartSector = 0;
-	uint32 EndSector = 0;
-	StartSector = FLASH_SECTOR_5;
-	EndSector = FLASH_SECTOR_7;
-	HAL_FLASH_Unlock();
-	EraseInitStruct.TypeErase     = FLASH_TYPEERASE_SECTORS;
-	EraseInitStruct.VoltageRange  = FLASH_VOLTAGE_RANGE_3;
-	EraseInitStruct.Sector        = StartSector;
-	EraseInitStruct.NbSectors     = (EndSector - StartSector) + 1;
-	if (HAL_FLASHEx_Erase(&EraseInitStruct, &SECTORError) != HAL_OK) return HAL_FLASH_GetError();
-	else
-	{
-		/* Do nothing. */
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-uint32 FBL_NvM_FlashWriteData(uint32 StartSectorAddress, uint32 *Data, uint16 numberofwords)
-{
-	uint32 sofar = 0;
-	HAL_FLASH_Unlock();
-	while(sofar < numberofwords)
-	{
-		if(HAL_FLASH_Program(FLASH_TYPEPROGRAM_WORD, StartSectorAddress, Data[sofar]) == HAL_OK)
-		{
-			StartSectorAddress += 4;
-			sofar++;
-		}
-		else return HAL_FLASH_GetError ();
-	}
-	HAL_FLASH_Lock();
-	return 0;
-}
-void FBL_NvM_FlashReadData(uint32 StartSectorAddress, uint32 *RxBuf, uint16 numberofwords)
-{
-	for (uint16 i = 0; i < numberofwords; i++) 	RxBuf[i] = *(__IO uint32 *)(StartSectorAddress + (i * 4));
-}
-void FBL_DiagService_DSC_RequestDownload(void)
-{
-	FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-	FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-	FBL_TxFrame[0] = FBL_RxFrame[0];
-	FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-	FBL_TxFrame[2] = FBL_RxFrame[2];
-	FBL_DSC_State = PROGRAMMING;
-	HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-	for(uint8 i = 0; i < 8 ; i++) FBL_TxFrame[i] = 0;
-	FBL_TxHeader.DLC = 0;
-	FBL_TxHeader.ExtId = 0;
-	FBL_TxHeader.IDE = 0;
-	FBL_TxHeader.RTR = 0;
-	FBL_TxHeader.StdId = 0;
-	FBL_TxHeader.TransmitGlobalTime = 0;
-	FBL_TxMailbox = 0;
-}
-void FBL_DiagService_DSC_TransferData(void)
-{
-	FBL_ProgrammingData = (FBL_RxFrame[6] << 24) | (FBL_RxFrame[5] << 16) | (FBL_RxFrame[4] << 8) | FBL_RxFrame[3];
-	__disable_irq();
-	FBL_NvM_FlashWriteData(FBL_ProgrammingAddress, &FBL_ProgrammingData, 1);
-	__enable_irq();
-	FBL_ProgrammingAddress += 4;
-	FBL_ProgrammingIndex += 1;
-	FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-	FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-	FBL_TxFrame[0] = FBL_RxFrame[0];
-	FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-	FBL_TxFrame[2] = FBL_RxFrame[2];
-	HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-	for(uint8 i = 0; i < 8 ; i++) FBL_TxFrame[i] = 0;
-	FBL_TxHeader.DLC = 0;
-	FBL_TxHeader.ExtId = 0;
-	FBL_TxHeader.IDE = 0;
-	FBL_TxHeader.RTR = 0;
-	FBL_TxHeader.StdId = 0;
-	FBL_TxHeader.TransmitGlobalTime = 0;
-	FBL_TxMailbox = 0;
-}
-void FBL_DiagService_DSC_RequestTransferExit(void)
-{
-	FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-	FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-	FBL_TxFrame[0] = FBL_RxFrame[0];
-	FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-	FBL_TxFrame[2] = FBL_RxFrame[2];
-	HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-	for(uint8 i = 0; i < 8 ; i++) FBL_TxFrame[i] = 0;
-	FBL_TxHeader.DLC = 0;
-	FBL_TxHeader.ExtId = 0;
-	FBL_TxHeader.IDE = 0;
-	FBL_TxHeader.RTR = 0;
-	FBL_TxHeader.StdId = 0;
-	FBL_TxHeader.TransmitGlobalTime = 0;
-	FBL_TxMailbox = 0;
-}
-void FBL_DiagService_RAR_MassEraseAPPL(void)
-{
-	__disable_irq();
-	FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-	FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-	FBL_TxFrame[0] = FBL_RxFrame[0];
-	FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-	FBL_TxFrame[2] = FBL_RxFrame[2];
-	HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-	FBL_NvM_EraseFlash_APPL();
-	for(uint8 i = 0; i < 8 ; i++) FBL_TxFrame[i] = 0;
-	FBL_TxHeader.DLC = 0;
-	FBL_TxHeader.ExtId = 0;
-	FBL_TxHeader.IDE = 0;
-	FBL_TxHeader.RTR = 0;
-	FBL_TxHeader.StdId = 0;
-	FBL_TxHeader.TransmitGlobalTime = 0;
-	FBL_TxMailbox = 0;
-	__enable_irq();
-}
-void FBL_JumpToAppl(void)
-{
-	typedef void (*pFunction)(void);
-	static uint32 app_address = APPL_START_ADDRESS;
-	static pFunction app_entry;
-	uint32 msp_value = *((uint32*)app_address);
-	__disable_irq();
-	SCB->VTOR = app_address;
-	__set_MSP(msp_value);
-	app_entry = (pFunction)(*((uint32*)(app_address + 4)));
-	app_entry();
-}
-void FBL_DiagService_ER_SoftReset(void)
-{
-	__disable_irq();
-	*FBL_DSC_Pointer = 0;
-	__NVIC_SystemReset();
-}
-void FBL_DiagService_ER_HardReset(void)
-{
-	__disable_irq();
-	*FBL_DSC_Pointer = 0;
-	for(uint32* addr = ((uint32*)NCR_START_ADDRESS); addr <= ((uint32*)NCR_END_ADDRESS); addr++) *addr = 0;
-	__NVIC_SystemReset();
-}
-
-void FBL_DiagService_RDBI_ReadActiveDiagnosticSession(void)
-{
-	FBL_TxHeader.DLC = FBL_RxHeader.DLC + 1;
-	FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-	FBL_TxFrame[0] = FBL_RxFrame[0] + 1;
-	FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-	FBL_TxFrame[2] = FBL_RxFrame[2];
-	FBL_TxFrame[3] = FBL_RxFrame[3];
-	FBL_TxFrame[4] = FBL_DSC_State;
-	HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-	for(uint8 i = 0; i < 8 ; i++) FBL_TxFrame[i] = 0;
-	FBL_TxHeader.DLC = 0;
-	FBL_TxHeader.ExtId = 0;
-	FBL_TxHeader.IDE = 0;
-	FBL_TxHeader.RTR = 0;
-	FBL_TxHeader.StdId = 0;
-	FBL_TxHeader.TransmitGlobalTime = 0;
-	FBL_TxMailbox = 0;
-}
-void FBL_DiagService_DSC_Programming(void)
-{
-	if(FBL_RxFrame[1] == 0x22 && FBL_RxFrame[2] == 0xF1 && FBL_RxFrame[3] == 0x86) FBL_DiagService_RDBI_ReadActiveDiagnosticSession();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(FBL_RxFrame[0] == 0x04 && FBL_RxFrame[1] == 0x31 && FBL_RxFrame[4] == 0x00) FBL_DiagService_RAR_MassEraseAPPL();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(FBL_RxFrame[1] == 0x34)
-	{
-		FBL_ProgrammingAddress = (0x08 << 24)
-												| (FBL_RxFrame[4] << 16)
-												| (FBL_RxFrame[5] << 8)
-												| (FBL_RxFrame[6]);
-		FBL_DiagService_DSC_RequestDownload();
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	if(FBL_RxFrame[1] == 0x36) FBL_DiagService_DSC_TransferData();
-	if(FBL_RxFrame[1] == 0x37 && FBL_RxFrame[0] == 0x01) FBL_DiagService_DSC_RequestTransferExit();
-	else
-	{
-		/* Do nothing. */
-	}
-	if(FBL_RxFrame[1] == 0x11 && FBL_RxFrame[2] == 0x01)
-	{
-		FBL_TxHeader.DLC = FBL_RxHeader.DLC;
-		FBL_TxHeader.StdId = FBL_RxHeader.StdId + 1;
-		FBL_TxFrame[0] = FBL_RxFrame[0];
-		FBL_TxFrame[1] = FBL_RxFrame[1] + 0x40;
-		FBL_TxFrame[2] = FBL_RxFrame[2];
-		FBL_TxFrame[3] = FBL_RxFrame[3];
-		HAL_CAN_AddTxMessage(&hcan1, &FBL_TxHeader, FBL_TxFrame, &FBL_TxMailbox);
-		for(uint32 i = 0; i < 200000; i ++);
-		FBL_DiagService_ER_HardReset();
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-}
-/* USER CODE END 4 */
-
-/**
- * @brief  This function is executed in case of error occurrence.
- * @retval None
- */
-void Error_Handler(void)
-{
-	/* USER CODE BEGIN Error_Handler_Debug */
-	__disable_irq();
-	__NVIC_SystemReset();
-	(*FBL_ResetCounterFBL)++;
-	/* USER CODE END Error_Handler_Debug */
-}
-
-#ifdef  USE_FULL_ASSERT
-/**
- * @brief  Reports the name of the source file and the source line number
- *         where the assert_param error has occurred.
- * @param  file: pointer to the source file name
- * @param  line: assert_param error line source number
- * @retval None
- */
-void assert_failed(uint8_t *file, uint32_t line)
-{
-	/* USER CODE BEGIN 6 */
-	/* USER CODE END 6 */
-}
-#endif /* USE_FULL_ASSERT */

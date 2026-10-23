@@ -1,58 +1,19 @@
-/* START OF FILE */
-/* INCLUDE START */
 #include "Dem.h"
-#include "CanSpi.h"
-/* INCLUDE END */
-/* VARIABLES START */
-CANSPI_uCAN_MSG Dem_DtcMessage;
-uint8 Dem_ControlDtcSettingStatus = 0;
-uint32 Dem_DTCStoreArray[DEM_SIZE_OF_DTC_ARRAY];
-/* VARIABLES STOP */
-/* FUNCTIONS START */
-void Dem_SaveDtc(uint8 index, uint8 status);
-/* FUNCTIONS STOP */
-/* FUNCTIONS START */
-void Dem_SaveDtc(uint8 index, uint8 status)
-{
-	__disable_irq();
-	/* Store DTC. */
-	if(0 == Dem_ControlDtcSettingStatus)
-	{
-		if(1 == status)
-		{
-			if(Dem_DTCStoreArray[(index - 0x01) * 2 + 1] == 1 || Dem_DTCStoreArray[(index - 0x01) * 2 + 1] == 0)
-			{
-				Dem_DtcMessage.frame.idType = 1;
-				Dem_DtcMessage.frame.id = 0x10C;
-				Dem_DtcMessage.frame.dlc = 1;
-				Dem_DtcMessage.frame.data0 = index;
-				CanSpi_Transmit(&Dem_DtcMessage);
-				Dem_DTCStoreArray[(index - 0x01) * 2] = index;
-				Dem_DTCStoreArray[(index - 0x01) * 2 + 1] = status + 1;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-		else
-		{
-			if(Dem_DTCStoreArray[(index - 0x01) * 2 + 1] == 1)
-			{
-				Dem_DTCStoreArray[(index - 0x01) * 2] = index;
-				Dem_DTCStoreArray[(index - 0x01) * 2 + 1] = status + 1;
-			}
-			else
-			{
-				/* Do nothing. */
-			}
-		}
-	}
-	else
-	{
-		/* Do nothing. */
-	}
-	__enable_irq();
+
+/* The 13 legacy (event ID, status) pairs retain their on-flash positions. */
+uint32 Dem_DTCStoreArray[DEM_LEGACY_ARRAY_SIZE];
+
+#ifndef DEM_HOST_TEST
+extern void CanSpi_DtcEventFailed(uint8 eventId);
+#endif
+
+void Dem_SaveDtc(uint8 EventId,uint8 Failed) {
+ (void)Dem_SetEventStatus(EventId,Failed?DEM_EVENT_STATUS_FAILED:DEM_EVENT_STATUS_PASSED);
 }
-/* FUNCTIONS STOP */
-/* STOP OF FILE */
+void Dem_ApplicationStatusChanged(Dem_EventIdType event,uint8 before,uint8 after) {
+#ifndef DEM_HOST_TEST
+ if(!(before&DEM_UDS_STATUS_TF) && (after&DEM_UDS_STATUS_TF))CanSpi_DtcEventFailed((uint8)event);
+#else
+ (void)event;(void)before;(void)after;
+#endif
+}

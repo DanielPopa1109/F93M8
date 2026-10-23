@@ -36,7 +36,6 @@
 ENTRY(Reset_Handler)
 
 /* Highest address of the user mode stack */
-_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
 
 _Min_Heap_Size = 0x200; /* required amount of heap */
 _Min_Stack_Size = 0x200; /* required amount of stack */
@@ -45,16 +44,19 @@ _Min_Stack_Size = 0x200; /* required amount of stack */
 MEMORY
 {
   RAM    (xrw)    : ORIGIN = 0x20010000,   LENGTH = 63K
-  FLASH  (rx)     : ORIGIN = 0x08060000,   LENGTH = 128K
-  NCR 	 (xrw)    : ORIGIN = 0x2001FDA8,   LENGTH = 600
+  FLASH  (rx)     : ORIGIN = 0x08060000,   LENGTH = 127K
+  NCR 	 (xrw)    : ORIGIN = 0x2001FDA8,   LENGTH = 584
 }
+
+_estack = ORIGIN(RAM) + LENGTH(RAM); /* end of "RAM" Ram type memory */
+
 
 
 /* Sections */
 
 SECTIONS
 {
-    .ncrsection :
+    .ncrsection (NOLOAD) :
     {
         *(.ncr)
     } >NCR
