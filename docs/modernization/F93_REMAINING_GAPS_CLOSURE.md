@@ -1,5 +1,7 @@
 # F93 remaining gaps closure — 2026-10-19
 
+> 2026-10-24 update: See CURRENT_STATE_REVIEW_2026-10-24.md for the current four-project assessment, corrections and remaining protocol gates. The report below is the 2026-10-19 baseline.
+
 **Overall: PARTIAL; no deployment or hardware-programming approval implied.** This is an implementation continuation across M1–M8. Native host execution, Cortex-M4 object compilation and complete freestanding FBL links are distinguished below. No complete AUTOSAR compliance, complete APP build, bench success, vehicle success or recoverable resident-FBL replacement is claimed.
 
 Only F93 was modified. ZGW and its FCD source were read-only. The existing dirty tree was retained. No ECU/CM5 was connected, flashed, modified or rebooted; no software was deployed; no commit/push occurred. `codex_credentials.env` is ignored. No credentials are included in artifacts.
@@ -47,7 +49,7 @@ The repository's `STATIC_AUDIT_REVIEW.md` has an original **F01–F12** table, hea
 | STM32 flash | HAL erase/program/readback, write bounds and controller relocking; ARM object evidence; hardware unverified | Same with F407-specific sector mapping |
 | Init/scheduling/types/error handling | Existing FreeRTOS architecture retained; NvM/DEM progression has one diagnostic-task owner, including startup/postrun; source/static integration verified | Startup deadlock prevented by progressing NvM outside RUN-only gating; full scheduler build still requires the Cube middleware |
 
-Remaining common limits: one diagnostic client/connection; provisional DTC numeric assignments from prior configuration; internal six-byte snapshots are persisted, but **UDS 19 04 is rejected with NRC 0x31 until snapshot DID/record encoding is configured**. UDS 19 06 formats the DTC status plus configured record number/counters. Full ECUC and SWS requirements are not exhaustively classified. RX date/RTC effects and original monitor fallback behavior remain ECU-specific. Locking covers DEM mutations and queued NvM updates; complete task/ISR/SPI reentrancy and worst-case response timing need review/bench evidence.
+Remaining common limits: one diagnostic client/connection; provisional DTC numeric assignments from prior configuration; internal six-byte snapshots are persisted, and **UDS 19 04 now exposes record 1 through metadata DID F1A0; ECU environmental capture remains unconfigured**. UDS 19 06 formats the DTC status plus configured record number/counters. Full ECUC and SWS requirements are not exhaustively classified. RX date/RTC effects and original monitor fallback behavior remain ECU-specific. Locking covers DEM mutations and queued NvM updates; complete task/ISR/SPI reentrancy and worst-case response timing need review/bench evidence.
 
 ## Persistence and migration contract
 
@@ -109,7 +111,7 @@ Memory evidence is in `tools/.build/memory-results.json` and ELF-derived `.map` 
 1. Full CubeIDE/GNU ARM Debug and Release APP/FBL builds; inspect APP map/stack/heap and GNU FBL size margins, source discovery, middleware paths and all task initialization. Review complete task/ISR ownership and SPI error propagation.
 2. Establish a contiguous APP packaging/migration contract and footer provisioning workflow for FCD; support sparse/multiple segments only with an explicit target transaction model. Verify the fixed ZGW/FCD route with controlled CAN traces.
 3. Bench-test actual MCP2515/bxCAN completion, errors/bus-off recovery, NM3 timeout/wake, controller/transceiver modes, worst-case erase/P2* and watchdog behavior. Inject real power loss during append/rollover, programming and metadata commit.
-4. Complete formal applicability/traceability review against DEM R20-11 and the retained R4.3.1 module SWS. Configure snapshot DIDs/application capture data and any required security/access, DCM OpStatus/cancellation, standard buffer APIs, multi-user/channel and additional DEM features. No placeholders or positive success are used for unavailable activation/record encoding.
+4. Complete formal applicability/traceability review against DEM R20-11 and the retained R4.3.1 module SWS. Extend the configured F1A0 metadata snapshot with ECU environmental capture and any required security/access, DCM OpStatus/cancellation, standard buffer APIs, multi-user/channel and additional DEM features. No placeholders or positive success are used for unavailable activation/record encoding.
 5. Recover original F13/F14 wording and map those findings; do not infer their identities from this continuation.
 6. Prove an independent resident-FBL recovery arrangement before implementing destructive RAM execution/activation. Leave the current interlock enabled until the required recovery evidence exists.
 

@@ -17,7 +17,7 @@ void Com_AppRx(uint16_t id){(void)id;++appRxCalls;}void Com_AppTx(void){}
 uint16 Dcm_AppReadDid(uint16 did,uint8 *p){if(did==0xF180){p[0]=30;return 1;}return 0;}
 uint16 Dcm_AppRoutine(const uint8 *p,uint16 n,uint8 *out){(void)p;(void)n;(void)out;return 0;}
 uint16 Dcm_AppPeriodic(const uint8 *p,uint16 n,uint8 *out){(void)p;(void)n;(void)out;return 0;}
-void Dcm_AppCommunication(uint8 p){Com_IpduGroupControl(0,(uint8)!p);}
+void Dcm_AppCommunication(uint8 p){Com_SetTxEnabled((uint8)!p);}
 void Dcm_AppReset(uint8 s){(void)s;++resetCalls;}void Dcm_AppClearSources(void){}
 static void confirm(void){Can_TxConfirmation(1);Can_MainFunction();}
 static void rxframe(const uint8_t *p,uint8_t n){Can_FrameType f={0};f.id=0x710;f.dlc=n;memcpy(f.data,p,n);Can_RxIndication(&f);Can_MainFunction();}
@@ -29,11 +29,36 @@ int main(void){
  uds(req,2);assert(wireId==0x710&&wire[0]==0xF0&&wire[2]==0x50);before=sent;
  /* Mailbox acceptance has not completed transport; duplicate response must be busy. */
  assert(CanTp_IsBusy());assert(PduR_DcmTransmit(req,2)!=CAN_OK);assert(sent==before);confirm();assert(!CanTp_IsBusy());
+ /* An empty UDS status mask selects no DTCs; DEM's zero-mask all-DTC
+  * filter remains reserved for reportSupportedDTC (19 0A). */
+ req[0]=0x19;req[1]=1;req[2]=0;uds(req,3);
+ assert(wire[2]==0x59&&wire[3]==1&&wire[6]==0&&wire[7]==0);confirm();
+ req[1]=2;uds(req,3);assert(wire[2]==0x59&&wire[3]==2&&wire[1]==3);confirm();
+ /* Stored record 1 is encoded with one configured metadata DID. */
+ req[1]=4;req[2]=(uint8_t)(Dem_Config.events[0].dtc>>16);
+ req[3]=(uint8_t)(Dem_Config.events[0].dtc>>8);
+ req[4]=(uint8_t)Dem_Config.events[0].dtc;req[5]=1;uds(req,6);
+ assert(wire[1]==0x10&&wire[2]==16&&wire[3]==0x59&&wire[4]==4);confirm();
+ frame[0]=0x41;frame[1]=0x30;frame[2]=0;frame[3]=0;rxframe(frame,4);
+ CanTp_MainFunction();assert(wire[1]==0x21&&wire[4]==1&&wire[5]==0xF1&&wire[6]==0xA0);confirm();
+ while(CanTp_IsBusy()){CanTp_MainFunction();confirm();}
+ req[5]=2;uds(req,6);assert(wire[2]==0x7F&&wire[3]==0x19&&wire[4]==0x31);confirm();
+ frame[0]=255;CanNm_RxIndication(0x3FF,frame,1);
+ for(unsigned i=0;i<3;++i){ComM_MainFunction();CanSM_MainFunction();}
+ assert(CanSM_IsTxAllowed());
  /* FCD's exact communication and DTC-control preamble remains supported. */
+ req[0]=0x28;req[1]=1;req[2]=3;uds(req,3);assert(wire[2]==0x68);confirm();
+ data[4]=42;before=appRxCalls;Com_RxIndication(0x97,data,5);assert(appRxCalls==before+1);
+ assert(Com_IsSignalValid(4));
+ before=sent;assert(Com_TriggerIPDUSend(6)==1&&sent==before);
+ req[0]=0x10;req[1]=1;uds(req,2);assert(wire[2]==0x50);confirm();
+ before=sent;assert(Com_TriggerIPDUSend(6)==0&&sent==before+1);
+ req[1]=3;uds(req,2);assert(wire[2]==0x50);confirm();
  req[0]=0x28;req[1]=1;req[2]=3;uds(req,3);assert(wire[2]==0x68);confirm();
  req[0]=0x85;req[1]=2;uds(req,2);assert(wire[2]==0xC5);confirm();
  req[0]=0x85;req[1]=1;uds(req,2);assert(wire[2]==0xC5);confirm();
  req[0]=0x28;req[1]=0;req[2]=3;uds(req,3);assert(wire[2]==0x68);confirm();
+ before=sent;assert(Com_TriggerIPDUSend(6)==0&&sent==before+1);
  /* 17-byte full request and 25-byte response; CF progress requires real confirmations. */
  {uint8_t request[17];request[0]=0x22;for(unsigned i=1;i<17;i+=2){request[i]=0xF1;request[i+1]=0x86;}
  frame[0]=CANTP_TARGET_ADDRESS;frame[1]=0x10;frame[2]=17;memcpy(frame+3,request,5);rxframe(frame,8);assert(wire[1]==0x30);confirm();
@@ -53,10 +78,16 @@ int main(void){
  assert(!Dem_SetEventStatus(Dem_Config.events[0].eventId,DEM_EVENT_STATUS_FAILED));NvM_WriteAll();drain();failAfter=0;uds(req,4);drain();Dem_MainFunction();Dcm_MainFunction();assert(wire[2]==0x7F&&wire[4]==0x72);confirm();failAfter=-1;
  req[0]=0x11;req[1]=1;uds(req,2);drain();Dcm_MainFunction();assert(wire[2]==0x51&&resetCalls==0);confirm();assert(resetCalls==1);
  /* Configured COM validates DLC, unpacks signals, times out and applies groups. */
- data[4]=77;Com_RxIndication(0x97,data,4);assert(appRxCalls==0);Com_RxIndication(0x97,data,5);assert(appRxCalls==1);assert(!Com_ReceiveSignal(4,&value)&&value==77);
+ data[4]=77;before=appRxCalls;Com_RxIndication(0x97,data,4);assert(appRxCalls==before);Com_RxIndication(0x97,data,5);assert(appRxCalls==before+1);assert(!Com_ReceiveSignal(4,&value)&&value==77);
  frame[0]=255;CanNm_RxIndication(0x3FF,frame,1);for(unsigned i=0;i<3;++i){ComM_MainFunction();CanSM_MainFunction();}assert(CanSM_IsTxAllowed());
- for(unsigned i=0;i<2000;++i)Com_MainFunction();assert(!Com_IsSignalValid(4));assert(Com_GetRxTimeoutCount()==1);assert(!Com_IsNm3Active());
- Com_IpduGroupControl(0,0);before=appRxCalls;Com_RxIndication(0x97,data,5);assert(appRxCalls==before);
  CanSM_ControllerBusOff();assert(!CanSM_IsTxAllowed());
- puts("diagnostics/communication: PASS full UDS, physical confirmations, FC/sequence, durable pending/failed clear, reset confirmation, configured COM/NM/bus-off");return 0;
+ for(unsigned i=0;i<200;++i){CanSM_MainFunction();assert(!CanSM_IsTxAllowed());}
+ CanSM_MainFunction();assert(CanSM_IsTxAllowed());
+ for(unsigned i=0;i<2000;++i)Com_MainFunction();assert(!Com_IsSignalValid(4));assert(Com_GetRxTimeoutCount()==1);assert(!Com_IsNm3Active());
+ req[0]=0x28;req[1]=1;req[2]=3;uds(req,3);assert(wire[2]==0x68);confirm();
+ before=sent;assert(Com_TriggerIPDUSend(6)==1&&sent==before);
+ for(unsigned i=0;i<1000;++i)Dcm_MainFunction();
+ before=sent;assert(Dcm_DiagnosticSession==DEFAULT&&Com_TriggerIPDUSend(6)==0&&sent==before+1);
+ Com_IpduGroupControl(0,0);before=appRxCalls;Com_RxIndication(0x97,data,5);assert(appRxCalls==before);
+ puts("diagnostics/communication: PASS full UDS, physical confirmations, FC/sequence, durable clear, reset, COM Rx/Tx control, S3 restore, NM/bus-off quiet period");return 0;
 }

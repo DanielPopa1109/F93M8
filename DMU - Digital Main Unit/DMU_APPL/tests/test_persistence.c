@@ -36,6 +36,7 @@ static void save(uint8_t value) { memset(ram[0],value,8); assert(!NvM_WriteBlock
 int main(void) {
  setbuf(stdout,0);
  uint8_t snapshot[6],after[6]; uint16 size; uint8_t status; int before,k;
+ assert(!NvM_IsIdle()); /* Uninitialized storage must not appear ready for shutdown. */
  assert(Crc_CalculateCRC32((const uint8_t *)"123456789",9,0,1)==0xCBF43926U);
  memset(flash,255,sizeof(flash)); boot(); save(0x11); boot(); assert(ram[0][0]==0x11);
  before=programs; save(0x11); assert(programs==before);

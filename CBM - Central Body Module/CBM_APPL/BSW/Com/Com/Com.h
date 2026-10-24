@@ -12,6 +12,7 @@ uint8_t Com_ValidateRxPdu(uint16_t id,uint8_t dlc);
 uint8_t Com_SendSignal(uint16_t signal,const void *value);
 uint8_t Com_ReceiveSignal(uint16_t signal,void *value);
 void Com_IpduGroupControl(uint8_t group,uint8_t enabled);
+void Com_SetTxEnabled(uint8_t enabled);
 uint8_t Com_IsSignalValid(uint16_t signal);
 uint8_t Com_TriggerIPDUSend(uint16_t pdu);
 uint16_t Com_GetRxTimeoutCount(void);

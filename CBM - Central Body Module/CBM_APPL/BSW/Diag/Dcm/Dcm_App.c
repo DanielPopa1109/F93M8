@@ -28,7 +28,7 @@ uint16 Dcm_AppPeriodic(const uint8 *p,uint16 n,uint8 *out) {
  if(id==2 || id==3) { index=id==2?2:0; out[3]=CmdList_RawValue[index];out[4]=CmdList_RawValue[index+1];out[5]=CmdList_ActualValue[index];out[6]=CmdList_ActualValue[index+1];return 7; }
  out[3]=CmdList_RawValue[4];out[4]=CmdList_ActualValue[4];return 5;
 }
-void Dcm_AppCommunication(uint8 control) { CanSpi_Communication_Status=control?CC_ACTIVE:FULL_COMMUNICATION; Com_IpduGroupControl(0,(uint8)!control); }
+void Dcm_AppCommunication(uint8 control) { CanSpi_Communication_Status=control?CC_ACTIVE:FULL_COMMUNICATION; Com_SetTxEnabled((uint8)!control); }
 void Dcm_AppClearSources(void) { /* Faults still present are reported again by their monitors. */ }
 void Dcm_AppReset(uint8 session) {
  volatile uint32 *mailbox=(volatile uint32 *)0x2001FFF0U;

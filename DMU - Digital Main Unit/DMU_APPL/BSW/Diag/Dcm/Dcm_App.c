@@ -33,7 +33,7 @@ uint16 Dcm_AppPeriodic(const uint8 *p,uint16 n,uint8 *out) {
  else {out[3]=DigitalCluster_FsmcDmaErrorFlag;out[4]=DigitalCluster_IsSelfTestRequested;out[5]=DigitalCluster_LcdInit;out[6]=DigitalCluster_ShutOffDisplayFlag;}
  return 7;
 }
-void Dcm_AppCommunication(uint8 control) { CanH_CommunicationState=control?CC_ACTIVE:FULL_COMMUNICATION; Com_IpduGroupControl(0,(uint8)!control); }
+void Dcm_AppCommunication(uint8 control) { CanH_CommunicationState=control?CC_ACTIVE:FULL_COMMUNICATION; Com_SetTxEnabled((uint8)!control); }
 void Dcm_AppClearSources(void) { DiagMonitor_ClearFaultSources(); }
 void Dcm_AppReset(uint8 session) {
  volatile uint32 *mailbox=(volatile uint32 *)0x1000FFF0U;

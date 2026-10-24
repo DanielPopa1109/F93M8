@@ -4,7 +4,7 @@
 #include <string.h>
 #define COM_NM3_TIMEOUT_TICKS 200U
 static uint8_t Com_Nm3Active;static uint16_t Com_Nm3AgeTicks;
-static uint8_t bytes[COM_PDU_COUNT][8],groups[8],valid[COM_PDU_COUNT],dirty[COM_PDU_COUNT];
+static uint8_t bytes[COM_PDU_COUNT][8],groups[8],valid[COM_PDU_COUNT],dirty[COM_PDU_COUNT],txEnabled;
 static uint16_t age[COM_PDU_COUNT],period[COM_PDU_COUNT],timeoutCount;
 static uint32_t unpack(uint16_t s) {
  const Com_SignalConfig *cfg=&Com_Signals[s];uint8_t i;uint32_t value=0;
@@ -23,7 +23,7 @@ uint8_t Com_ReceiveSignal(uint16_t s,void *p) {if(!p||s>=COM_SIGNAL_COUNT)return
 uint8_t Com_IsSignalValid(uint16_t s) {return s<COM_SIGNAL_COUNT?valid[Com_Signals[s].pdu]:0;}
 void Com_Init(void) {
  memset(bytes,0,sizeof(bytes));memset(valid,0,sizeof(valid));memset(dirty,0,sizeof(dirty));memset(age,0,sizeof(age));memset(period,0,sizeof(period));memset(groups,1,sizeof(groups));
- Com_Nm3Active=0;Com_Nm3AgeTicks=COM_NM3_TIMEOUT_TICKS;timeoutCount=0;
+ Com_Nm3Active=0;Com_Nm3AgeTicks=COM_NM3_TIMEOUT_TICKS;timeoutCount=0;txEnabled=1;
 }
 void Com_RxIndication(uint16_t id,const uint8_t *p,uint8_t n) {
  uint16_t i;
@@ -34,8 +34,9 @@ void Com_RxIndication(uint16_t id,const uint8_t *p,uint8_t n) {
  }
 }
 void Com_IpduGroupControl(uint8_t group,uint8_t on) {if(group<8)groups[group]=on!=0;}
+void Com_SetTxEnabled(uint8_t enabled) {txEnabled=enabled!=0;}
 uint8_t Com_TriggerIPDUSend(uint16_t pdu) {
- if(pdu>=COM_PDU_COUNT||!Com_Pdus[pdu].tx||!groups[Com_Pdus[pdu].group]||!CanSM_IsTxAllowed())return 1;
+ if(pdu>=COM_PDU_COUNT||!Com_Pdus[pdu].tx||!groups[Com_Pdus[pdu].group]||!txEnabled||!CanSM_IsTxAllowed())return 1;
  if(CanIf_TransmitApplication(Com_Pdus[pdu].canId,bytes[pdu],Com_Pdus[pdu].dlc)!=CAN_OK)return 1;
  dirty[pdu]=0;return 0;
 }

@@ -31,8 +31,18 @@ static uint16 dtcs(const uint8 *p,uint16 n) {
  if(n<2) return negative(0x19,0x13);
  if(p[1]==1 || p[1]==2) { if(n!=3) return negative(0x19,0x13); mask=p[2]; }
  else if(p[1]==4) {
-  /* No wire-level snapshot DID assignment exists in either ECU configuration. */
-  return negative(0x19,n==6?0x31:0x13);
+  if(n!=6) return negative(0x19,0x13);
+  if(p[5]!=1U && p[5]!=0xFFU) return negative(0x19,0x31);
+  dtc=((uint32)p[2]<<16)|((uint32)p[3]<<8)|p[4]; size=CAPACITY-10U;
+  if(Dem_SelectDTC(0,dtc,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY)!=E_OK ||
+     Dem_GetStatusOfDTC(0,&status)!=E_OK ||
+     Dem_GetSnapshotDataByDTC(dtc,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY,
+                              1U,response+10,&size)!=E_OK) return negative(0x19,0x31);
+  response[0]=0x59; response[1]=4U; memcpy(response+2,p+2,3);
+  response[5]=status; response[6]=1U; response[7]=1U;
+  response[8]=(uint8)(DCM_SNAPSHOT_METADATA_DID>>8);
+  response[9]=(uint8)DCM_SNAPSHOT_METADATA_DID;
+  return (uint16)(size+10U);
  }
  else if(p[1]==6) {
   if(n!=6) return negative(0x19,0x13);
@@ -46,6 +56,12 @@ static uint16 dtcs(const uint8 *p,uint16 n) {
  if(Dem_SetDTCFilter(0,mask,DEM_DTC_FORMAT_UDS,DEM_DTC_ORIGIN_PRIMARY_MEMORY,FALSE,0,FALSE)!=E_OK ||
     Dem_GetDTCStatusAvailabilityMask(0,&status,DEM_DTC_ORIGIN_PRIMARY_MEMORY)!=E_OK) return negative(0x19,0x22);
  response[0]=0x59; response[1]=p[1]; response[2]=status;
+ /* DEM uses mask zero to enumerate supported DTCs for 19 0A. UDS 19 01/02
+  * with no supported status bits selected must return an empty result. */
+ if(p[1]!=0x0AU && (mask&status)==0U) {
+  if(p[1]==1U) { response[3]=1U; response[4]=response[5]=0U; return 6U; }
+  return 3U;
+ }
  if(p[1]==1) {
   if(Dem_GetNumberOfFilteredDTC(0,&count)!=E_OK) return negative(0x19,0x22);
   response[3]=1; response[4]=(uint8)(count>>8); response[5]=(uint8)count; return 6;
@@ -71,7 +87,7 @@ static uint16 process(const uint8 *p,uint16 n) {
   response[0]=0x7E; response[1]=0; return 2;
  case 0x10:
   sub=p[1];
-  if(sub==1) Dcm_DiagnosticSession=DEFAULT;
+  if(sub==1) { Dcm_DiagnosticSession=DEFAULT; Dcm_AppCommunication(0); }
   else if(sub==3) Dcm_DiagnosticSession=EXTENDED;
   else if((sub==2 || (0 && (sub==4||sub==5))) && Dcm_DiagnosticSession==EXTENDED) {
    if(!NvM_IsIdle()) return negative(p[0],0x21);
@@ -121,7 +137,10 @@ void Dcm_TpTxConfirmation(uint8 success) {
 void Dcm_MainFunction(void) {
  uint8 finished=0,failed=0;
  Dcm_AliveCounter+=5;
- if(!operation && !inFlight && !responseReady && ++s3>=DCM_S3_TICKS) { s3=DCM_S3_TICKS; Dcm_DiagnosticSession=DEFAULT; }
+ if(!operation && !inFlight && !responseReady && ++s3>=DCM_S3_TICKS) {
+  s3=DCM_S3_TICKS;
+  if(Dcm_DiagnosticSession!=DEFAULT) { Dcm_DiagnosticSession=DEFAULT; Dcm_AppCommunication(0); }
+ }
  if(operation && !responseReady && !inFlight) {
   if(operation==1) {
    Dem_ClearDTCStatusType status=Dem_GetClearDTCStatus();

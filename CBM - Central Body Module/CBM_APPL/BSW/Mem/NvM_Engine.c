@@ -53,7 +53,7 @@ void NvM_ReadAll(void) { if(NvM_Ready && !multi) { multi=1U; multiIndex=0U; } }
 void NvM_WriteAll(void) {
     if(NvM_Ready && !multi) { NvM_ApplicationCapture(); multi=2U; multiIndex=0U; NvM_LastWriteResult=2U; }
 }
-uint8_t NvM_IsIdle(void) { return count==0U && multi==0U; }
+uint8_t NvM_IsIdle(void) { return NvM_Ready!=0U && count==0U && multi==0U; }
 void NvM_EngineMainFunction(void) {
     Job *j; const NvM_BlockDescriptorType *cfg; uint8_t r; uint16_t b;
     if(!NvM_Ready) return;

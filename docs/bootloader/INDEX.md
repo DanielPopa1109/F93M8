@@ -1,4 +1,4 @@
-> Current 2026-10-19 ELC-port implementation: [porting matrix](ELC_FBL_PORTING_MATRIX.md), [RAM execution and verification](RAM_UPDATER_VERIFICATION.md), [memory](MEMORY_AND_LINKER.md) and [executed results](../modernization/F93_VERIFICATION_RESULTS.md). Both FBLs have real independently executing SRAM updaters and verified default/controlled ARM ELFs. Default deployment is interlocked; full CubeIDE/APP builds and all hardware/recovery evidence remain unverified. Older staging-only/legacy statements below are historical.
+> Current 2026-10-24 four-project assessment: [CBM/DMU APP/FBL review](../modernization/CURRENT_STATE_REVIEW_2026-10-24.md). See [porting matrix](ELC_FBL_PORTING_MATRIX.md), [RAM execution and verification](RAM_UPDATER_VERIFICATION.md), [memory](MEMORY_AND_LINKER.md) and [executed results](../modernization/F93_VERIFICATION_RESULTS.md). Both FBLs have independently built SRAM updaters and verified default/controlled ARM ELFs. Default activation is interlocked; full CubeIDE/APP builds and hardware/recovery evidence remain unverified. Older staging-only/legacy statements below are historical.
 
 # F93 flashloader and bootloader reference
 

@@ -1,10 +1,10 @@
-> Current F93 2026-10-19: independent CBM/DMU resident and SRAM updaters are implemented, ARM-linked and host-tested. Default activation is interlocked; full APP/CubeIDE builds, bench operation and recovery remain unverified. See [ELC implementation matrix](../bootloader/ELC_FBL_PORTING_MATRIX.md), [RAM evidence](../bootloader/RAM_UPDATER_VERIFICATION.md), [current memory](../bootloader/MEMORY_AND_LINKER.md) and [verification results](../modernization/F93_VERIFICATION_RESULTS.md). Older contradictory material below is historical.
+> Current 2026-10-24 four-project assessment and fixes: [CBM/DMU APP/FBL review](../modernization/CURRENT_STATE_REVIEW_2026-10-24.md). Independent resident/SRAM updaters are ARM-linked and host-tested; default activation is interlocked. Complete APP/CubeIDE builds, bench operation and recovery remain unverified. See [RAM evidence](../bootloader/RAM_UPDATER_VERIFICATION.md), [current memory](../bootloader/MEMORY_AND_LINKER.md) and [verification results](../modernization/F93_VERIFICATION_RESULTS.md). Older contradictory material below is historical.
 
 # F93 knowledge bank
 
 Start here. This repository contains independent CBM (STM32F411RETx) and DMU (STM32F407VETx) application/FBL projects, plus bus test artifacts. See the [modernization implementation report](../modernization/IMPLEMENTATION_REPORT.md) and [second static audit](../modernization/STATIC_AUDIT_REVIEW.md) for current source changes, findings F01–F12 and remaining ZGW architecture gaps.
 
-The current [AUTOSAR compliance matrix](../autosar/COMPLIANCE_MATRIX.md), [DEM trace](../autosar/DEM_SWS_TRACEABILITY.md), [DEM implementation report](../autosar/DEM_IMPLEMENTATION_REPORT.md), and [BSW roadmap](../autosar/BSW_MIGRATION_ROADMAP.md) supersede any earlier suggestion that a ZGW-shaped module is AUTOSAR compliant. DEM uses the user-supplied R20-11 SWS; the other modules retain the R4.3.1 baseline pending their own migrations.
+The current [AUTOSAR compliance matrix](../autosar/COMPLIANCE_MATRIX.md), [DEM trace](../autosar/DEM_SWS_TRACEABILITY.md), [selected DCM trace](../autosar/DCM_SWS_TRACEABILITY.md), [DEM implementation report](../autosar/DEM_IMPLEMENTATION_REPORT.md), and [BSW roadmap](../autosar/BSW_MIGRATION_ROADMAP.md) supersede any earlier suggestion that a ZGW-shaped module is AUTOSAR compliant. DEM uses the user-supplied R20-11 SWS; the other modules retain the R4.3.1 baseline pending their own migrations.
 
 ## Topics
 

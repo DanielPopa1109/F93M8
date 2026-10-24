@@ -10,7 +10,7 @@ The requirement table below retains previously source-reviewed R20-11 IDs. Its o
 | SWS_Dem_00652 / event memory | Primary entries, event index, allocation order and six-byte snapshots now persisted/restored | Snapshot survives simulated reset | Full displacement/entry lifecycle variants and electrical interruption unverified |
 | Configured status callback area | `Dem_Cfg` callback dispatch in MainFunction outside IRQ locks; CBM original failure announcement retained | Observable callback in executed host suite; actual hooks M4 compiled | All R20-11 monitor-init/re-enable callback requirements not closed |
 
-Ten current native suites compile and execute; the verification report lists exactly which scenarios are covered. Earlier `test_dem_core.c`/AArch64 statements below are historical and are not presented as executed acceptance. Internal snapshot persistence is supported; UDS snapshot DID encoding is intentionally unconfigured and rejected on wire. DET/MemMap/RTE are outside the explicit project scope and are not dependencies.
+Twelve current native suites compile and execute; the verification report lists exactly which scenarios are covered. Earlier `test_dem_core.c`/AArch64 statements below are historical and are not presented as executed acceptance. Internal snapshot persistence is supported; both APP DCMs now expose the six-byte metadata record via UDS 19 04/DID F1A0. ECU environmental capture remains unconfigured. DET/MemMap/RTE are outside the explicit project scope and are not dependencies.
 
 ---
 
